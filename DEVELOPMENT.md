@@ -1,0 +1,343 @@
+# Development Guide - Escal Backend
+
+This document describes how to develop, test, and deploy the Escal backend.
+
+## Getting Started
+
+### Prerequisites
+- Python 3.10+
+- Docker and Docker Compose
+- PostgreSQL client tools (optional, for direct DB access)
+
+### Initial Setup
+
+1. **Clone and navigate to backend:**
+   ```bash
+   cd backend
+   ```
+
+2. **Create virtual environment:**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Copy environment template:**
+   ```bash
+   cp .env.example .env
+   ```
+
+5. **Configure environment variables** (especially API keys for connectors):
+   - Edit `.env` with your Shopify, Meta, and Google API credentials
+
+### Running the Application
+
+1. **Start Docker services:**
+   ```bash
+   docker-compose up -d
+   ```
+
+2. **Run migrations** (if needed):
+   ```bash
+   # Already run via docker-entrypoint-initdb.d in docker-compose
+   ```
+
+3. **Start the server:**
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+
+The API will be available at `http://localhost:8000`.
+
+## Testing
+
+### Test Infrastructure
+
+We use `pytest` with `pytest-asyncio` for async endpoint testing. Tests run against a separate test database (`test-db` service in docker-compose).
+
+### Running Tests
+
+1. **Start test database (once per session):**
+   ```bash
+   docker-compose up test-db -d
+   ```
+
+2. **Run all tests:**
+   ```bash
+   pytest
+   ```
+
+3. **Run specific test file:**
+   ```bash
+   pytest tests/test_auth.py -v
+   ```
+
+4. **Run specific test:**
+   ```bash
+   pytest tests/test_auth.py::TestRegister::test_register_success -v
+   ```
+
+5. **Run tests with coverage:**
+   ```bash
+   pytest --cov=app --cov-report=html
+   ```
+
+### Test Organization
+
+- **tests/conftest.py** - Fixtures for database, client, users, stores
+- **tests/test_auth.py** - Authentication (register/login)
+- **tests/test_ownership.py** - Ownership scoping (prevent cross-account access)
+- **tests/test_encryption.py** - Credential encryption
+
+### Example Test Output
+
+```
+tests/test_auth.py::TestRegister::test_register_success PASSED
+tests/test_auth.py::TestLogin::test_login_success PASSED
+tests/test_ownership.py::TestOwnershipScoping::test_cannot_access_other_account_store PASSED
+tests/test_encryption.py::TestEncryption::test_encrypt_decrypt_roundtrip PASSED
+```
+
+## Connector Architecture
+
+### Base Connector Interface
+
+All connectors inherit from `BaseConnector` in `app/connectors/__init__.py`:
+
+```python
+class BaseConnector(ABC):
+    def get_oauth_url(self, state: str) -> str: ...
+    def exchange_auth_code(self, code: str, redirect_uri: str) -> OAuthToken: ...
+    def validate_webhook_signature(self, body: str, signature: str) -> bool: ...
+    def process_webhook(self, event_type: str, data: dict) -> dict: ...
+    def fetch_historical_data(self, start_date: datetime, end_date: datetime) -> dict: ...
+```
+
+### Implemented Connectors
+
+#### 1. Shopify Connector (`app/connectors/shopify.py`)
+
+**OAuth Flow:**
+```
+User → /connectors/shopify/auth-url?store_id=xxx
+  ↓
+/connectors/shopify/callback (with Shopify's auth code)
+  ↓
+Token stored encrypted in store_credentials table
+```
+
+**Webhook Support:**
+- Event: `orders/create` and `orders/updated`
+- Signature validation: HMAC-SHA256 via `X-Shopify-Hmac-SHA256` header
+- Data normalized and ingested into `orders` table
+
+**Usage:**
+```bash
+# Get OAuth URL
+curl -X POST http://localhost:8000/connectors/shopify/auth-url \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"store_id": "xxx", "shop_domain": "mystore.myshopify.com"}'
+
+# Shopify webhook (received from Shopify)
+curl -X POST http://localhost:8000/connectors/shopify/webhook/{store_id} \
+  -H "X-Shopify-Hmac-SHA256: ..." \
+  -H "X-Shopify-Topic: orders/create" \
+  -d '{...order data...}'
+```
+
+#### 2. Meta (Facebook) Ads Connector (`app/connectors/meta.py`)
+
+**OAuth Flow:**
+```
+User → /connectors/meta/auth-url?store_id=xxx
+  ↓
+/connectors/meta/callback (with Meta's auth code)
+  ↓
+Token stored encrypted in store_credentials table
+```
+
+**Ad Spend Sync:**
+```bash
+# Sync ad spend for date range
+curl -X POST http://localhost:8000/connectors/meta/sync-ad-spend \
+  -H "Authorization: Bearer {token}" \
+  -d '{"store_id": "xxx", "start_date": "2026-01-01", "end_date": "2026-01-31"}'
+```
+
+**Data Fetched:**
+- Campaign spend by day
+- Impressions and clicks
+- Stored in `ad_spend` table with `platform="meta"`
+
+#### 3. Google Ads Connector (`app/connectors/google.py`)
+
+**OAuth Flow:**
+```
+User → /connectors/google/auth-url?store_id=xxx
+  ↓
+/connectors/google/callback (with Google's auth code)
+  ↓
+Token stored encrypted + refresh token (6-month rotation)
+```
+
+**Ad Spend Sync:**
+```bash
+# Sync ad spend (auto-refreshes token if expired)
+curl -X POST http://localhost:8000/connectors/google/sync-ad-spend \
+  -H "Authorization: Bearer {token}" \
+  -d '{"store_id": "xxx", "start_date": "2026-01-01", "end_date": "2026-01-31"}'
+```
+
+**Data Fetched:**
+- Campaign performance via GAQL queries
+- Spend in micros (converted to currency)
+- Stored in `ad_spend` table with `platform="google"`
+
+### Adding a New Connector
+
+1. Create `app/connectors/newconnector.py`:
+   ```python
+   from app.connectors import BaseConnector
+   
+   class NewConnector(BaseConnector):
+       def get_oauth_url(self, state: str) -> str: ...
+       def exchange_auth_code(self, code: str, redirect_uri: str) -> OAuthToken: ...
+       # ... implement other methods
+   ```
+
+2. Add settings to `.env.example`
+
+3. Add OAuth endpoints in `app/routes/connectors.py`:
+   ```python
+   @router.post("/newconnector/auth-url")
+   def get_newconnector_auth_url(...): ...
+   
+   @router.post("/newconnector/callback")
+   def newconnector_oauth_callback(...): ...
+   ```
+
+4. Write tests in `tests/test_connectors.py`
+
+## Security Notes
+
+### Credential Encryption
+
+All OAuth tokens are encrypted at rest using Fernet (symmetric encryption):
+
+```python
+# In app/security.py
+encrypted_token = encrypt_secret(raw_token)
+decrypted_token = decrypt_secret(encrypted_token)
+```
+
+- Encryption key: `CREDENTIALS_ENCRYPTION_KEY` from `.env`
+- Generate new key: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+
+### Webhook Signature Validation
+
+- **Shopify**: HMAC-SHA256 of body, header `X-Shopify-Hmac-SHA256`
+- **Meta**: SHA1 HMAC, header `X-Hub-Signature`
+- **Google**: Does not use webhooks (pull-based only)
+
+### Ownership Isolation
+
+All connector endpoints use `get_owned_store()` dependency:
+
+```python
+store = db.get(Store, store_id)
+if not store or store.account_id != current_user.account_id:
+    raise HTTPException(status_code=404, detail="Store not found")
+```
+
+This prevents users from accessing stores in other accounts. Error messages don't reveal store existence (no data leak).
+
+## Database Schema
+
+### Key Tables
+
+- **store_credentials** - Encrypted OAuth tokens
+  - `id` (UUID): Primary key
+  - `store_id` (UUID): Foreign key to stores
+  - `provider` (string): "shopify", "meta", "google", etc.
+  - `access_token` (string): Encrypted token
+  - `refresh_token` (string): Encrypted (if applicable)
+  - `expires_at` (datetime): Token expiration (if applicable)
+
+- **orders** (hypertable) - Order data from Shopify
+  - `time` (datetime): Order timestamp
+  - `store_id` (UUID): Which store
+  - `order_id` (string): Shopify order ID
+  - `gross_amount`, `net_profit`, etc.
+
+- **ad_spend** (hypertable) - Ad spend from Meta/Google
+  - `time` (datetime): Date of spend
+  - `store_id` (UUID): Which store
+  - `platform` (string): "meta" or "google"
+  - `campaign_id`, `campaign_name`, `spend`, `impressions`, `clicks`
+
+## Continuous Aggregates (Metrics)
+
+SQL views in `db/init/004_continuous_aggregates.sql` provide:
+
+- `daily_financial_summary` - Refreshed hourly with orders + COGS data
+- `metrics/summary` endpoint joins this with real ad spend:
+  ```
+  true_roas = revenue / ad_spend
+  real_profit_after_ads = net_profit - ad_spend
+  ```
+
+## Troubleshooting
+
+### Test Database Connection Issues
+
+1. Verify test-db is running:
+   ```bash
+   docker ps | grep test-db
+   ```
+
+2. Test connection:
+   ```bash
+   psql -h localhost -p 5433 -U test -d escal_test
+   ```
+
+3. Recreate test database:
+   ```bash
+   docker-compose down test-db
+   docker-compose up test-db -d
+   ```
+
+### Webhook Signature Validation Failures
+
+1. Verify API secret matches in `.env`
+2. Ensure webhook body isn't modified before validation
+3. Check webhook headers are passed correctly
+
+### Token Expiration Issues
+
+- **Shopify**: Access tokens don't expire
+- **Meta**: Access tokens don't expire (for business accounts)
+- **Google**: Access tokens expire in 1 hour, refresh tokens in 6 months
+
+The `sync_google_ad_spend` endpoint automatically refreshes expired tokens.
+
+## Performance Notes
+
+- **Continuous aggregates** refresh every hour (configurable)
+- **Webhook processing** is synchronous (queue if needed for scale)
+- **Historical syncs** paginate API results (rate limiting varies by provider)
+
+## Next Steps
+
+1. ✅ Test infrastructure (pytest + test database)
+2. ✅ Shopify OAuth + order webhook
+3. ✅ Meta Ads connector
+4. ✅ Google Ads connector
+5. ⏳ Tiendanube connector (same pattern)
+6. ⏳ MercadoPago connector (same pattern)
+7. ⏳ Frontend dashboard (once connectors are stable)

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import auth, accounts, stores, products, orders, pixel_events, ad_spend, metrics
+from app.routes import auth, accounts, stores, products, orders, pixel_events, ad_spend, metrics, connectors
 
 app = FastAPI(title="Escal", version="0.1.0")
 
@@ -20,6 +20,7 @@ app.include_router(orders.router)
 app.include_router(pixel_events.router)
 app.include_router(ad_spend.router)
 app.include_router(metrics.router)
+app.include_router(connectors.router)
 
 
 @app.get("/health")
