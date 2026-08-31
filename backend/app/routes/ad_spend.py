@@ -1,11 +1,11 @@
 from datetime import datetime
-from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, insert
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_owned_store
 from app.models import Store, ad_spend as ad_spend_table
 from app.schemas.ad_spend import AdSpendCreate
 
@@ -13,13 +13,15 @@ router = APIRouter(prefix="/stores/{store_id}/ad-spend", tags=["ad-spend"])
 
 
 @router.post("", status_code=201)
-def ingest_ad_spend(store_id: UUID, payload: list[AdSpendCreate], db: Session = Depends(get_db)):
-    if not db.get(Store, store_id):
-        raise HTTPException(status_code=404, detail="Store not found")
+def ingest_ad_spend(
+    payload: list[AdSpendCreate],
+    store: Store = Depends(get_owned_store),
+    db: Session = Depends(get_db),
+):
     if not payload:
         return {"inserted": 0}
 
-    rows = [{"store_id": store_id, **item.model_dump()} for item in payload]
+    rows = [{"store_id": store.id, **item.model_dump()} for item in payload]
     db.execute(insert(ad_spend_table), rows)
     db.commit()
     return {"inserted": len(rows)}
@@ -27,13 +29,13 @@ def ingest_ad_spend(store_id: UUID, payload: list[AdSpendCreate], db: Session = 
 
 @router.get("")
 def list_ad_spend(
-    store_id: UUID,
     start: datetime | None = Query(default=None),
     end: datetime | None = Query(default=None),
     platform: str | None = Query(default=None),
+    store: Store = Depends(get_owned_store),
     db: Session = Depends(get_db),
 ):
-    stmt = select(ad_spend_table).where(ad_spend_table.c.store_id == store_id)
+    stmt = select(ad_spend_table).where(ad_spend_table.c.store_id == store.id)
     if start:
         stmt = stmt.where(ad_spend_table.c.time >= start)
     if end:

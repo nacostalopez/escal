@@ -5,7 +5,6 @@ from pydantic import BaseModel, ConfigDict
 
 
 class StoreCreate(BaseModel):
-    account_id: UUID
     name: str
     platform: str
     currency: str = "USD"

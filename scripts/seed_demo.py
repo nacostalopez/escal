@@ -6,6 +6,7 @@ Usage:
 """
 
 import random
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -14,13 +15,22 @@ BASE_URL = "http://localhost:8000"
 
 
 def main():
-    account = requests.post(f"{BASE_URL}/accounts", json={"name": "Demo Account"}).json()
+    email = f"demo-{uuid.uuid4().hex[:8]}@escal.dev"
+    auth = requests.post(
+        f"{BASE_URL}/auth/register",
+        json={"account_name": "Demo Account", "email": email, "password": "demo-password-123"},
+    ).json()
+    token = auth["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    print("registered:", email)
+
+    account = requests.get(f"{BASE_URL}/accounts/me", headers=headers).json()
     print("account:", account["id"])
 
     store = requests.post(
         f"{BASE_URL}/stores",
+        headers=headers,
         json={
-            "account_id": account["id"],
             "name": "Demo Store",
             "platform": "shopify",
             "currency": "USD",
@@ -32,6 +42,7 @@ def main():
 
     products = requests.put(
         f"{BASE_URL}/stores/{store_id}/products",
+        headers=headers,
         json=[
             {"external_id": "sku-1", "sku": "SKU1", "title": "T-Shirt", "cogs": 5.0, "shipping_cost": 2.0},
             {"external_id": "sku-2", "sku": "SKU2", "title": "Hoodie", "cogs": 12.0, "shipping_cost": 3.0},
@@ -60,7 +71,7 @@ def main():
                     "attribution_utm_campaign": "demo-campaign",
                 }
             )
-    r = requests.post(f"{BASE_URL}/stores/{store_id}/orders", json=orders)
+    r = requests.post(f"{BASE_URL}/stores/{store_id}/orders", headers=headers, json=orders)
     print("orders inserted:", r.json())
 
     ad_spend = []
@@ -79,18 +90,20 @@ def main():
                     "clicks": random.randint(50, 300),
                 }
             )
-    r = requests.post(f"{BASE_URL}/stores/{store_id}/ad-spend", json=ad_spend)
+    r = requests.post(f"{BASE_URL}/stores/{store_id}/ad-spend", headers=headers, json=ad_spend)
     print("ad spend inserted:", r.json())
 
     start = (now - timedelta(days=14)).isoformat()
     end = now.isoformat()
     summary = requests.get(
         f"{BASE_URL}/stores/{store_id}/metrics/summary",
+        headers=headers,
         params={"start": start, "end": end},
     ).json()
     print("\nSummary (last 14 days):")
     print(summary)
     print(f"\nTry it yourself: GET {BASE_URL}/stores/{store_id}/metrics/summary?start={start}&end={end}")
+    print(f'  -H "Authorization: Bearer {token}"')
 
 
 if __name__ == "__main__":

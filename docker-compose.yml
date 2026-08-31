@@ -22,6 +22,8 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-escal}:${POSTGRES_PASSWORD:-escal}@db:5432/${POSTGRES_DB:-escal}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-Qxsu0Kb675R0dWY-WeAE-1hvcXLTQj74_pJrlsr_kG4=}
     ports:
       - "8000:8000"
     depends_on:

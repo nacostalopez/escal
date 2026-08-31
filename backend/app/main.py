@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import accounts, stores, products, orders, pixel_events, ad_spend, metrics
+from app.routes import auth, accounts, stores, products, orders, pixel_events, ad_spend, metrics
 
 app = FastAPI(title="Escal", version="0.1.0")
 
@@ -12,6 +12,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(accounts.router)
 app.include_router(stores.router)
 app.include_router(products.router)

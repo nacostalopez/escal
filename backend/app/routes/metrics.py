@@ -1,11 +1,12 @@
 from datetime import datetime
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_owned_store
+from app.models import Store
 from app.schemas.metrics import MetricsSummaryOut, DailyMetricOut
 
 router = APIRouter(prefix="/stores/{store_id}/metrics", tags=["metrics"])
@@ -70,21 +71,21 @@ DAILY_SQL = text(
 
 @router.get("/summary", response_model=MetricsSummaryOut)
 def metrics_summary(
-    store_id: UUID,
     start: datetime = Query(...),
     end: datetime = Query(...),
+    store: Store = Depends(get_owned_store),
     db: Session = Depends(get_db),
 ):
-    row = db.execute(SUMMARY_SQL, {"store_id": str(store_id), "start": start, "end": end}).mappings().one()
+    row = db.execute(SUMMARY_SQL, {"store_id": str(store.id), "start": start, "end": end}).mappings().one()
     return row
 
 
 @router.get("/daily", response_model=list[DailyMetricOut])
 def metrics_daily(
-    store_id: UUID,
     start: datetime = Query(...),
     end: datetime = Query(...),
+    store: Store = Depends(get_owned_store),
     db: Session = Depends(get_db),
 ):
-    rows = db.execute(DAILY_SQL, {"store_id": str(store_id), "start": start, "end": end}).mappings().all()
+    rows = db.execute(DAILY_SQL, {"store_id": str(store.id), "start": start, "end": end}).mappings().all()
     return rows

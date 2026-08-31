@@ -1,12 +1,12 @@
 from datetime import datetime
-from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import get_db
+from app.dependencies import get_owned_store
 from app.models import Store, orders as orders_table
 from app.schemas.orders import OrderCreate, OrderOut
 
@@ -14,13 +14,11 @@ router = APIRouter(prefix="/stores/{store_id}/orders", tags=["orders"])
 
 
 @router.post("", status_code=201)
-def ingest_orders(store_id: UUID, payload: list[OrderCreate], db: Session = Depends(get_db)):
-    if not db.get(Store, store_id):
-        raise HTTPException(status_code=404, detail="Store not found")
+def ingest_orders(payload: list[OrderCreate], store: Store = Depends(get_owned_store), db: Session = Depends(get_db)):
     if not payload:
         return {"inserted": 0}
 
-    rows = [{"store_id": store_id, **item.model_dump()} for item in payload]
+    rows = [{"store_id": store.id, **item.model_dump()} for item in payload]
     stmt = pg_insert(orders_table).values(rows)
     update_cols = {
         c.name: stmt.excluded[c.name]
@@ -38,12 +36,12 @@ def ingest_orders(store_id: UUID, payload: list[OrderCreate], db: Session = Depe
 
 @router.get("", response_model=list[OrderOut])
 def list_orders(
-    store_id: UUID,
     start: datetime | None = Query(default=None),
     end: datetime | None = Query(default=None),
+    store: Store = Depends(get_owned_store),
     db: Session = Depends(get_db),
 ):
-    stmt = select(orders_table).where(orders_table.c.store_id == store_id)
+    stmt = select(orders_table).where(orders_table.c.store_id == store.id)
     if start:
         stmt = stmt.where(orders_table.c.time >= start)
     if end:

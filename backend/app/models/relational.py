@@ -16,6 +16,19 @@ class Account(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     stores = relationship("Store", back_populates="account", cascade="all, delete-orphan")
+    users = relationship("User", back_populates="account", cascade="all, delete-orphan")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"))
+    email = Column(String(255), unique=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    account = relationship("Account", back_populates="users")
 
 
 class Store(Base):

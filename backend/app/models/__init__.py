@@ -1,4 +1,4 @@
-from app.models.relational import Account, Store, StoreCredential, Product
+from app.models.relational import Account, Store, StoreCredential, Product, User
 from app.models.hypertables import orders, pixel_events, ad_spend
 
 __all__ = [
@@ -6,6 +6,7 @@ __all__ = [
     "Store",
     "StoreCredential",
     "Product",
+    "User",
     "orders",
     "pixel_events",
     "ad_spend",

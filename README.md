@@ -11,8 +11,8 @@ other repo on this machine.
   pixel events, and ad spend, with a continuous aggregate for fast daily rollups
 - **Docker Compose** — one command to run the whole stack locally
 
-Schema lives in [`db/init/`](db/init) and matches the design: `accounts`, `stores`,
-`store_credentials`, `products` as regular tables; `orders`, `pixel_events`,
+Schema lives in [`db/init/`](db/init) and matches the design: `accounts`, `users`,
+`stores`, `store_credentials`, `products` as regular tables; `orders`, `pixel_events`,
 `ad_spend` as hypertables; `daily_financial_summary` as a continuous aggregate.
 
 ## Quickstart
@@ -32,10 +32,35 @@ pip install requests
 python scripts/seed_demo.py
 ```
 
+## Auth
+
+Every endpoint except `POST /auth/register` and `POST /auth/login` requires a
+JWT bearer token. An account is created implicitly on register — one user
+owns one account for now (team members/multi-user accounts are a later step).
+
+```bash
+curl -X POST localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"account_name": "My Store", "email": "me@example.com", "password": "at-least-8-chars"}'
+# => {"access_token": "...", "token_type": "bearer"}
+
+curl localhost:8000/stores -H "Authorization: Bearer <access_token>"
+```
+
+Every `/stores/{id}/...` route checks that the store belongs to the caller's
+account (404, not 403, on mismatch — no confirming another account's store
+exists). `store_credentials.access_token`/`refresh_token` are encrypted at
+rest with Fernet (`CREDENTIALS_ENCRYPTION_KEY`) before they hit the database.
+
+Set `JWT_SECRET` and `CREDENTIALS_ENCRYPTION_KEY` in `.env` for anything
+beyond local dev — see `.env.example`.
+
 ## API overview
 
-- `POST /accounts`, `GET /accounts`
-- `POST /stores`, `GET /stores`, `PUT /stores/{id}/credentials` (OAuth tokens per provider)
+- `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
+- `GET /accounts/me`
+- `POST /stores`, `GET /stores`, `GET /stores/{id}`,
+  `PUT /stores/{id}/credentials` (OAuth tokens per provider, encrypted at rest)
 - `PUT /stores/{id}/products` (bulk upsert by `external_id`, carries COGS/shipping cost)
 - `POST /stores/{id}/orders` (bulk ingest/upsert), `GET /stores/{id}/orders?start=&end=`
 - `POST /stores/{id}/pixel-events` (bulk ingest), `GET /stores/{id}/pixel-events?...`
@@ -48,13 +73,13 @@ python scripts/seed_demo.py
 
 ## Status / next steps
 
-This is the functional core: schema + ingestion + the profit/ROAS math. Not yet built:
+Schema + ingestion + profit/ROAS math + auth/credential-encryption are done.
+Not yet built:
 
-- Auth (no login/JWT yet — API is open, for local dev only)
-- Encryption at rest for `store_credentials.access_token`
 - Real platform connectors (Shopify/Tiendanube webhooks, Meta/Google Ads API pulls,
   MercadoPago) — right now data comes in via the bulk ingest endpoints
 - Frontend dashboard
-- Multi-tenant auth/permissions per account
+- Multi-user accounts / role-based permissions (currently one user = one account)
+- Refresh tokens (JWTs are long-lived, 7 days, with no revocation yet)
 
 Design/UI is intentionally deferred — this is the "make it useful" pass.
