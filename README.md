@@ -6,9 +6,12 @@ other repo on this machine.
 
 ## Stack
 
-- **FastAPI** (Python) — REST API
+- **FastAPI** (Python) — REST API, plus Shopify/Meta/Google Ads connectors
+  (`backend/app/connectors/`)
 - **PostgreSQL + TimescaleDB** — relational config tables + hypertables for orders,
   pixel events, and ad spend, with a continuous aggregate for fast daily rollups
+- **Plain HTML/CSS/JS frontend** (`frontend/`) — no build step, calls the API
+  directly; served by nginx in Docker Compose
 - **Docker Compose** — one command to run the whole stack locally
 
 Schema lives in [`db/init/`](db/init) and matches the design: `accounts`, `users`,
@@ -21,11 +24,14 @@ Schema lives in [`db/init/`](db/init) and matches the design: `accounts`, `users
 docker compose up --build
 ```
 
-This starts Postgres/Timescale on `localhost:5432` and the API on
-`http://localhost:8000` (docs at `http://localhost:8000/docs`). The schema is
-created automatically from `db/init/*.sql` on first boot.
+This starts Postgres/Timescale on `localhost:5432`, the API on
+`http://localhost:8000` (docs at `http://localhost:8000/docs`), and the
+frontend on `http://localhost:3000`. The schema is created automatically
+from `db/init/*.sql` on first boot.
 
-Seed it with demo data and see a real True ROAS number:
+Open `http://localhost:3000`, register an account, create a store, and click
+"Seed demo data" to see a real True ROAS number without touching the
+terminal — or do the same thing from the command line:
 
 ```bash
 pip install requests
@@ -70,16 +76,17 @@ beyond local dev — see `.env.example`.
 - `GET /stores/{id}/metrics/daily?start=&end=` — daily breakdown via the
   `daily_financial_summary` continuous aggregate (fast, but can lag up to ~1h
   behind since it refreshes on an hourly policy — see `db/init/004_continuous_aggregates.sql`)
+- `GET/POST /connectors/{shopify,meta,google}/...` — OAuth handshake, ad-spend
+  sync, and (Shopify) order webhook per provider — see `DEVELOPMENT.md`
+- `GET /stores/{id}/connectors/health` — per-provider sync status
 
 ## Status / next steps
 
-Schema + ingestion + profit/ROAS math + auth/credential-encryption are done.
-Not yet built:
+Schema, ingestion, profit/ROAS math, auth/credential-encryption, Shopify/Meta/Google
+connectors, CI, and a first frontend are done. Not yet built:
 
-- Real platform connectors (Shopify/Tiendanube webhooks, Meta/Google Ads API pulls,
-  MercadoPago) — right now data comes in via the bulk ingest endpoints
-- Frontend dashboard
+- Tiendanube and MercadoPago connectors (same pattern as the existing three)
 - Multi-user accounts / role-based permissions (currently one user = one account)
 - Refresh tokens (JWTs are long-lived, 7 days, with no revocation yet)
-
-Design/UI is intentionally deferred — this is the "make it useful" pass.
+- The frontend is intentionally minimal (`frontend/`, no build step) — fine
+  for seeing real numbers locally, not meant as a finished product design

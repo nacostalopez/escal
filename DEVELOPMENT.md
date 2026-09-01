@@ -420,6 +420,7 @@ The `sync_google_ad_spend` endpoint automatically refreshes expired tokens.
 5. ✅ CI (GitHub Actions), pre-commit hook, PR template
 6. ✅ Connector sync-status tracking + `/connectors/health` + ownership audit script
 7. ✅ Secrets rotation policy (`SECURITY.md`)
-8. ⏳ Tiendanube connector (same pattern)
-9. ⏳ MercadoPago connector (same pattern)
-10. ⏳ Frontend dashboard (once connectors are stable)
+8. ✅ First frontend (`frontend/` — plain HTML/CSS/JS, no build step)
+9. ⏳ Tiendanube connector (same pattern)
+10. ⏳ MercadoPago connector (same pattern)
+11. ⏳ Real frontend design pass (current one is functional only)

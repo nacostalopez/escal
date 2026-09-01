@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Escal</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Escal</div>
+    <div id="topbar-account" class="topbar-account" hidden>
+      <span id="account-name"></span>
+      <button id="logout-btn" class="btn btn-ghost">Log out</button>
+    </div>
+  </header>
+
+  <main id="app">
+    <!-- Auth view -->
+    <section id="auth-view" class="auth-view">
+      <div class="auth-card">
+        <div class="auth-tabs">
+          <button id="tab-login" class="auth-tab active">Log in</button>
+          <button id="tab-register" class="auth-tab">Register</button>
+        </div>
+
+        <form id="login-form" class="auth-form">
+          <label>Email
+            <input type="email" id="login-email" required autocomplete="username" />
+          </label>
+          <label>Password
+            <input type="password" id="login-password" required autocomplete="current-password" />
+          </label>
+          <button type="submit" class="btn btn-primary">Log in</button>
+        </form>
+
+        <form id="register-form" class="auth-form" hidden>
+          <label>Account name
+            <input type="text" id="register-account-name" required placeholder="My Store LLC" />
+          </label>
+          <label>Email
+            <input type="email" id="register-email" required autocomplete="username" />
+          </label>
+          <label>Password
+            <input type="password" id="register-password" required minlength="8" autocomplete="new-password" />
+          </label>
+          <button type="submit" class="btn btn-primary">Create account</button>
+        </form>
+
+        <p id="auth-error" class="error-text" hidden></p>
+      </div>
+    </section>
+
+    <!-- Dashboard view -->
+    <section id="dashboard-view" class="dashboard-view" hidden>
+      <aside class="sidebar">
+        <div class="sidebar-section">
+          <h3>Stores</h3>
+          <ul id="store-list" class="store-list"></ul>
+          <button id="new-store-btn" class="btn btn-ghost btn-block">+ New store</button>
+        </div>
+      </aside>
+
+      <div class="content">
+        <div id="empty-state" class="empty-state" hidden>
+          <p>No stores yet.</p>
+          <button id="empty-new-store-btn" class="btn btn-primary">Create your first store</button>
+        </div>
+
+        <div id="store-panel" class="store-panel" hidden>
+          <div class="store-panel-header">
+            <div>
+              <h2 id="store-name"></h2>
+              <span id="store-meta" class="muted"></span>
+            </div>
+            <div class="store-panel-actions">
+              <select id="range-select">
+                <option value="7">Last 7 days</option>
+                <option value="14" selected>Last 14 days</option>
+                <option value="30">Last 30 days</option>
+              </select>
+              <button id="seed-btn" class="btn btn-ghost">Seed demo data</button>
+            </div>
+          </div>
+
+          <div id="metrics-empty" class="muted" hidden>No orders in this range yet — try "Seed demo data".</div>
+
+          <div class="stat-grid">
+            <div class="stat-card">
+              <span class="stat-label">Revenue</span>
+              <span class="stat-value" id="stat-revenue">—</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Net profit</span>
+              <span class="stat-value" id="stat-net-profit">—</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Ad spend</span>
+              <span class="stat-value" id="stat-ad-spend">—</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Real profit after ads</span>
+              <span class="stat-value" id="stat-real-profit">—</span>
+            </div>
+            <div class="stat-card stat-card-highlight">
+              <span class="stat-label">True ROAS</span>
+              <span class="stat-value" id="stat-roas">—</span>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Daily revenue vs. ad spend</h3>
+            <div id="chart-container" class="chart-container"></div>
+          </div>
+
+          <div class="panel">
+            <h3>Connector status</h3>
+            <div id="connector-status" class="connector-grid"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- New store modal -->
+  <div id="new-store-modal" class="modal" hidden>
+    <div class="modal-card">
+      <h3>New store</h3>
+      <form id="new-store-form">
+        <label>Name
+          <input type="text" id="new-store-name" required placeholder="My Shopify Store" />
+        </label>
+        <label>Platform
+          <select id="new-store-platform">
+            <option value="shopify">Shopify</option>
+            <option value="tiendanube">Tiendanube</option>
+            <option value="mercadolibre">MercadoLibre</option>
+          </select>
+        </label>
+        <label>Currency
+          <input type="text" id="new-store-currency" value="USD" maxlength="3" />
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="new-store-cancel" class="btn btn-ghost">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
