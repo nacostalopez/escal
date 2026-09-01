@@ -1,5 +1,6 @@
 """Connector routes for OAuth handshakes, webhooks, and sync-status reporting."""
 import json
+import logging
 from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
@@ -15,7 +16,10 @@ from app.connectors.shopify import ShopifyConnector
 from app.database import get_db
 from app.dependencies import get_current_user, get_owned_store
 from app.models import ConnectorStatus, ShopifyWebhookLog, Store, StoreCredential, TokenRefreshAudit, User
+from app.rate_limit import limiter
 from app.security import decrypt_secret, encrypt_secret
+
+logger = logging.getLogger("escal.connectors")
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
 
@@ -162,9 +166,10 @@ def shopify_oauth_callback(
 
 
 @router.post("/shopify/webhook/{store_id}")
+@limiter.limit("120/minute")
 async def shopify_webhook(
-    store_id: UUID,
     request: Request,
+    store_id: UUID,
     x_shopify_hmac_sha256: str = Header(None),
     x_shopify_shop_api_version: str = Header(None),
     x_shopify_topic: str = Header(None),
@@ -206,6 +211,10 @@ async def shopify_webhook(
         ))
         db.commit()
         _upsert_connector_status(db, store_id, "shopify", synced=True, success=False, error="Invalid webhook signature")
+        logger.warning(
+            "shopify_webhook_rejected",
+            extra={"store_id": str(store_id), "topic": topic, "reason": "invalid_signature"},
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook signature")
 
     try:
@@ -239,6 +248,10 @@ async def shopify_webhook(
         ))
         db.commit()
         _upsert_connector_status(db, store_id, "shopify", synced=True, success=True)
+        logger.info(
+            "shopify_webhook_processed",
+            extra={"store_id": str(store_id), "topic": topic},
+        )
 
         return {"status": "received"}
     except Exception as e:
@@ -249,6 +262,10 @@ async def shopify_webhook(
         ))
         db.commit()
         _upsert_connector_status(db, store_id, "shopify", synced=True, success=False, error=str(e))
+        logger.error(
+            "shopify_webhook_processing_failed",
+            extra={"store_id": str(store_id), "topic": topic, "error": str(e)},
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to process Shopify webhook: {str(e)}",

@@ -103,6 +103,9 @@ We use `pytest` with `pytest-asyncio` for async endpoint testing. Tests run agai
 - **tests/test_auth.py** - Authentication (register/login)
 - **tests/test_ownership.py** - Ownership scoping (prevent cross-account access)
 - **tests/test_encryption.py** - Credential encryption
+- **tests/test_connectors_interface.py** - Every connector implements `BaseConnector` fully
+- **tests/test_connectors_schema.py** - Meta/Google ad-spend and Shopify order output shape (mocked HTTP)
+- **tests/test_webhooks_e2e.py** - Shopify webhook end-to-end against a real DB: signature validation, order upsert, audit logging, connector_status
 
 ### Example Test Output
 
@@ -115,11 +118,16 @@ tests/test_encryption.py::TestEncryption::test_encrypt_decrypt_roundtrip PASSED
 
 ### Test Markers
 
-Tests are marked `auth`, `ownership`, `encryption`, `connector`, `integration`,
-`slow`, and — importantly — `db` for anything needing a live database
-connection (`docker compose up test-db -d` first). Run just the offline ones
-with `pytest -m "not db"` (this is what the pre-commit hook runs); run
-everything with a plain `pytest`.
+Tests are marked `auth`, `ownership`, `encryption`, `connector`, `webhook`,
+`integration`, `slow`, and — importantly — `db` for anything needing a live
+database connection (`docker compose up test-db -d` first). Run just the
+offline ones with `pytest -m "not db"` (this is what the pre-commit hook
+runs); run everything with a plain `pytest`.
+
+The rate limiter (see below) is process-global, in-memory storage — the
+`_reset_rate_limiter` autouse fixture in `conftest.py` clears it before every
+test so unrelated login/register calls earlier in the run don't trip a 429
+in a later, unrelated test.
 
 ## Continuous Integration
 
@@ -291,6 +299,39 @@ Checklist (also enforced via `.github/pull_request_template.md`):
 
 See `SECURITY.md` (repo root) for the credential rotation schedule.
 
+### Structured Logging
+
+`app/logging_config.py` configures the root logger to emit one JSON object
+per line (timestamp, level, logger, message, plus anything passed via
+`extra={...}`), so logs are directly ingestible by log aggregators with no
+regex parsing. `main.py`'s `log_requests` middleware logs every request
+(method, path, status, duration, client IP, a generated `X-Request-ID`), and
+the Shopify webhook route logs on rejection/success/failure. Set the level
+with `LOG_LEVEL` (defaults to `INFO`).
+
+### Rate Limiting
+
+`app/rate_limit.py` defines a shared `slowapi` `Limiter` keyed by client IP,
+with a `200/minute` default applied to every route via `SlowAPIMiddleware`.
+Sensitive endpoints override it tighter: `/auth/register` (5/minute),
+`/auth/login` (10/minute), the Shopify webhook receiver (120/minute — higher
+because legitimate traffic can burst there). Exceeding a limit returns `429`.
+
+### Environment Variable Validation
+
+Two layers:
+- `python scripts/check_env.py` — compares the real environment (and
+  `backend/.env` / `.env`) against `backend/.env.example`, the canonical
+  list of every variable the app knows about. Missing `DATABASE_URL`,
+  `JWT_SECRET`, or `CREDENTIALS_ENCRYPTION_KEY` fails the check (exit 1);
+  missing connector credentials just warn, since the app boots fine without
+  them (that connector just won't work). Wired into CI as a step.
+- `Settings.validate_production_ready()` (`app/config.py`), called at
+  backend startup — refuses to boot when `ENVIRONMENT=production` and
+  `jwt_secret`/`credentials_encryption_key` are still equal to their
+  dev-only defaults. A no-op in local dev (`ENVIRONMENT` defaults to
+  `development`).
+
 ### Ownership Audit
 
 `scripts/audit_ownership.py` checks that every `store_credentials` row still
@@ -421,6 +462,7 @@ The `sync_google_ad_spend` endpoint automatically refreshes expired tokens.
 6. ✅ Connector sync-status tracking + `/connectors/health` + ownership audit script
 7. ✅ Secrets rotation policy (`SECURITY.md`)
 8. ✅ First frontend (`frontend/` — plain HTML/CSS/JS, no build step)
-9. ⏳ Tiendanube connector (same pattern)
-10. ⏳ MercadoPago connector (same pattern)
-11. ⏳ Real frontend design pass (current one is functional only)
+9. ✅ Structured (JSON) logging, API rate limiting, env-var validation, Shopify webhook e2e tests
+10. ⏳ Tiendanube connector (same pattern)
+11. ⏳ MercadoPago connector (same pattern)
+12. ⏳ Real frontend design pass (current one is functional only)

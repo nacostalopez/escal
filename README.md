@@ -80,10 +80,15 @@ beyond local dev — see `.env.example`.
   sync, and (Shopify) order webhook per provider — see `DEVELOPMENT.md`
 - `GET /stores/{id}/connectors/health` — per-provider sync status
 
+All requests are logged as structured JSON (see `DEVELOPMENT.md`) and rate
+limited (200/min default, tighter on `/auth/*` and the Shopify webhook) —
+exceeding a limit returns `429`.
+
 ## Status / next steps
 
 Schema, ingestion, profit/ROAS math, auth/credential-encryption, Shopify/Meta/Google
-connectors, CI, and a first frontend are done. Not yet built:
+connectors, CI, a first frontend, structured logging, rate limiting, env-var
+validation, and Shopify webhook e2e tests are done. Not yet built:
 
 - Tiendanube and MercadoPago connectors (same pattern as the existing three)
 - Multi-user accounts / role-based permissions (currently one user = one account)

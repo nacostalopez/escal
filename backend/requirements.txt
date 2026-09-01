@@ -14,3 +14,4 @@ pytest-asyncio==0.23.2
 httpx==0.25.2
 testcontainers[postgresql]==3.7.1
 requests==2.31.0
+slowapi==0.1.9

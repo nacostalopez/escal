@@ -25,6 +25,7 @@ jobs:
           --health-retries 10
 
     env:
+      DATABASE_URL: postgresql+psycopg2://test:test@localhost:5433/escal_test
       TEST_DATABASE_URL: postgresql+psycopg2://test:test@localhost:5433/escal_test
       JWT_SECRET: ci-test-secret
       CREDENTIALS_ENCRYPTION_KEY: Qxsu0Kb675R0dWY-WeAE-1hvcXLTQj74_pJrlsr_kG4=
@@ -53,6 +54,9 @@ jobs:
             echo "A real .env file is tracked in git — only .env.example should ever be committed."
             exit 1
           fi
+
+      - name: Validate required environment variables are set
+        run: python scripts/check_env.py
 
       - name: Apply database schema (db/init/*.sql)
         run: |

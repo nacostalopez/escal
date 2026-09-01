@@ -3,12 +3,13 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, get_db
 from app.main import app
 from app.models.relational import Account, Store, StoreCredential, User
+from app.rate_limit import limiter
 from app.security import encrypt_secret, hash_password
 
 # Use test database (via docker-compose test-db service)
@@ -16,6 +17,16 @@ TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql+psycopg2://test:test@localhost:5433/escal_test",
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """The limiter's in-memory storage is process-global and TestClient
+    always presents the same "IP", so without this, login/register attempts
+    from earlier tests count against later ones and cause spurious 429s.
+    """
+    limiter.reset()
+    yield
 
 
 @pytest.fixture(scope="session")
@@ -35,15 +46,35 @@ def test_db_engine():
 
 @pytest.fixture
 def test_db_session(test_db_engine):
-    """Provide a clean database session for each test."""
+    """Provide a clean database session for each test.
+
+    Route/fixture code calls session.commit() and session.rollback() as if
+    it owned a real request-scoped session. Joining the outer transaction
+    directly (the naive `connection.begin()` + `sessionmaker(bind=connection)`
+    recipe) breaks under that: SQLAlchemy 2.0 ends the outer transaction for
+    real on the first commit(), so a later rollback() (e.g. the webhook
+    route's error path) can wipe out data an earlier fixture already
+    "committed" in this same test. The SAVEPOINT recipe below is what
+    SQLAlchemy's docs recommend specifically to keep commit/rollback inside
+    tests working exactly like production, while the whole test still rolls
+    back at teardown.
+    """
     connection = test_db_engine.connect()
-    transaction = connection.begin()
+    outer_transaction = connection.begin()
     session = sessionmaker(bind=connection)()
-    
+
+    nested = connection.begin_nested()
+
+    @event.listens_for(session, "after_transaction_end")
+    def _restart_savepoint(sess, transaction):
+        nonlocal nested
+        if not nested.is_active:
+            nested = connection.begin_nested()
+
     yield session
-    
+
     session.close()
-    transaction.rollback()
+    outer_transaction.rollback()
     connection.close()
 
 

@@ -14,6 +14,12 @@
 
 * { box-sizing: border-box; }
 
+/* Several elements below set their own `display` (flex/grid) for when they're
+   shown — that rule's specificity beats the UA default `[hidden]{display:none}`,
+   so a hidden .modal/.dashboard-view/.auth-view would still render (and eat
+   clicks) unless this wins explicitly. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
