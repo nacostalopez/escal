@@ -129,6 +129,19 @@ The rate limiter (see below) is process-global, in-memory storage — the
 test so unrelated login/register calls earlier in the run don't trip a 429
 in a later, unrelated test.
 
+### Postman Collection
+
+`postman/escal.postman_collection.json` covers the full request lifecycle
+against a running stack (`docker compose up`): register/login, store
+CRUD, order/ad-spend ingestion, metrics math, and the Shopify webhook
+(valid + invalid signature, computed in a pre-request script via
+`CryptoJS.HmacSHA256`). Import it into Postman directly, or run headless:
+
+```bash
+npm install -g newman
+newman run postman/escal.postman_collection.json
+```
+
 ## Continuous Integration
 
 `.github/workflows/ci.yml` runs on every push/PR: spins up a `timescaledb`

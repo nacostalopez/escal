@@ -1,0 +1,987 @@
+{
+  "info": {
+    "_postman_id": "escal-api-tests-2026",
+    "name": "Escal API - Endpoint Tests",
+    "description": "Complete test suite for Escal e-commerce analytics backend. Tests all endpoints with assertions.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "AUTH",
+      "item": [
+        {
+          "name": "Register Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has access_token\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('access_token');",
+                  "    pm.expect(jsonData.access_token).to.be.a('string');",
+                  "    pm.expect(jsonData.access_token.length).to.be.above(0);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has token_type\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.token_type).to.equal('bearer');",
+                  "});",
+                  "",
+                  "// Store token for next requests",
+                  "var jsonData = pm.response.json();",
+                  "pm.environment.set('auth_token', jsonData.access_token);",
+                  "pm.environment.set('account_name', pm.request.body.raw ? JSON.parse(pm.request.body.raw).account_name : 'Test Account');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"account_name\": \"Test Account {{$timestamp}}\",\n  \"email\": \"test{{$timestamp}}@example.com\",\n  \"password\": \"SecurePassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has access_token\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('access_token');",
+                  "});",
+                  "",
+                  "// Update token",
+                  "var jsonData = pm.response.json();",
+                  "pm.environment.set('auth_token', jsonData.access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{login_email}}\",\n  \"password\": \"{{login_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has user data\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('email');",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "});",
+                  "",
+                  "pm.test(\"Email matches login\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.email).to.equal(pm.environment.get('login_email'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Login - Invalid Credentials",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message present\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('Invalid');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{login_email}}\",\n  \"password\": \"WrongPassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "STORES",
+      "item": [
+        {
+          "name": "List Stores",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/stores",
+              "host": ["{{base_url}}"],
+              "path": ["stores"]
+            }
+          }
+        },
+        {
+          "name": "Create Store",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has store id\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData.id).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.test(\"Store has correct name\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.name).to.equal('Test Store ' + pm.environment.get('timestamp'));",
+                  "});",
+                  "",
+                  "// Save store_id for next requests",
+                  "var jsonData = pm.response.json();",
+                  "pm.environment.set('store_id', jsonData.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Store {{$timestamp}}\",\n  \"platform\": \"shopify\",\n  \"currency\": \"USD\",\n  \"timezone\": \"America/New_York\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/stores",
+              "host": ["{{base_url}}"],
+              "path": ["stores"]
+            }
+          }
+        },
+        {
+          "name": "Get Store",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Store data is complete\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "    pm.expect(jsonData).to.have.property('platform');",
+                  "});",
+                  "",
+                  "pm.test(\"Store id matches request\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.id).to.equal(pm.environment.get('store_id'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/stores/{{store_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["stores", "{{store_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ORDERS",
+      "item": [
+        {
+          "name": "Ingest Orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has inserted count\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('inserted');",
+                  "    pm.expect(jsonData.inserted).to.equal(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"order_id\": \"order_{{$timestamp}}_1\",\n    \"time\": \"2026-08-31T14:00:00Z\",\n    \"gross_amount\": 150.00,\n    \"discounts\": 10.00,\n    \"shipping_fee\": 5.00,\n    \"payment_gateway_fee\": 4.50,\n    \"cogs_total\": 60.00,\n    \"currency\": \"USD\"\n  },\n  {\n    \"order_id\": \"order_{{$timestamp}}_2\",\n    \"time\": \"2026-08-31T15:00:00Z\",\n    \"gross_amount\": 200.00,\n    \"discounts\": 20.00,\n    \"shipping_fee\": 8.00,\n    \"payment_gateway_fee\": 6.00,\n    \"cogs_total\": 85.00,\n    \"currency\": \"USD\"\n  }\n]"
+            },
+            "url": {
+              "raw": "{{base_url}}/stores/{{store_id}}/orders",
+              "host": ["{{base_url}}"],
+              "path": ["stores", "{{store_id}}", "orders"]
+            }
+          }
+        },
+        {
+          "name": "List Orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test(\"Orders have required fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.length > 0) {",
+                  "        var order = jsonData[0];",
+                  "        pm.expect(order).to.have.property('order_id');",
+                  "        pm.expect(order).to.have.property('gross_amount');",
+                  "        pm.expect(order).to.have.property('time');",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/stores/{{store_id}}/orders?start={{range_start}}&end={{range_end}}",
+              "host": ["{{base_url}}"],
+              "path": ["stores", "{{store_id}}", "orders"],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "{{range_start}}"
+                },
+                {
+                  "key": "end",
+                  "value": "{{range_end}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "AD SPEND",
+      "item": [
+        {
+          "name": "Ingest Ad Spend",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has inserted count\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('inserted');",
+                  "    pm.expect(jsonData.inserted).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"time\": \"2026-08-31T14:00:00Z\",\n    \"platform\": \"meta\",\n    \"campaign_id\": \"campaign_meta_1\",\n    \"campaign_name\": \"Summer Sale Campaign\",\n    \"adset_id\": \"adset_1\",\n    \"spend\": 50.00,\n    \"impressions\": 5000,\n    \"clicks\": 150\n  },\n  {\n    \"time\": \"2026-08-31T14:00:00Z\",\n    \"platform\": \"google\",\n    \"campaign_id\": \"campaign_google_1\",\n    \"campaign_name\": \"Back to School\",\n    \"adset_id\": \"adset_google_1\",\n    \"spend\": 75.00,\n    \"impressions\": 8000,\n    \"clicks\": 200\n  }\n]"
+            },
+            "url": {
+              "raw": "{{base_url}}/stores/{{store_id}}/ad-spend",
+              "host": ["{{base_url}}"],
+              "path": ["stores", "{{store_id}}", "ad-spend"]
+            }
+          }
+        },
+        {
+          "name": "List Ad Spend",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test(\"Ad spend records have required fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.length > 0) {",
+                  "        var record = jsonData[0];",
+                  "        pm.expect(record).to.have.property('platform');",
+                  "        pm.expect(record).to.have.property('spend');",
+                  "        pm.expect(record).to.have.property('time');",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/stores/{{store_id}}/ad-spend?platform=meta",
+              "host": ["{{base_url}}"],
+              "path": ["stores", "{{store_id}}", "ad-spend"],
+              "query": [
+                {
+                  "key": "platform",
+                  "value": "meta"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "METRICS",
+      "item": [
+        {
+          "name": "Get Summary Metrics",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has metrics data\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('revenue');",
+                  "    pm.expect(jsonData).to.have.property('net_profit');",
+                  "    pm.expect(jsonData).to.have.property('total_ad_spend');",
+                  "});",
+                  "",
+                  "pm.test(\"Response has true_roas and real_profit_after_ads\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('true_roas');",
+                  "    pm.expect(jsonData).to.have.property('real_profit_after_ads');",
+                  "});",
+                  "",
+                  "pm.test(\"Metrics are non-negative\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.revenue).to.be.at.least(0);",
+                  "    pm.expect(jsonData.total_ad_spend).to.be.at.least(0);",
+                  "});",
+                  "",
+                  "pm.test(\"True ROAS calculation is correct\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.total_ad_spend > 0) {",
+                  "        var expectedRoas = Math.round((jsonData.revenue / jsonData.total_ad_spend) * 100) / 100;",
+                  "        pm.expect(jsonData.true_roas).to.equal(expectedRoas);",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/stores/{{store_id}}/metrics/summary?start={{range_start}}&end={{range_end}}",
+              "host": ["{{base_url}}"],
+              "path": ["stores", "{{store_id}}", "metrics", "summary"],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "{{range_start}}"
+                },
+                {
+                  "key": "end",
+                  "value": "{{range_end}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Daily Metrics",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test(\"Daily records have required fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.length > 0) {",
+                  "        var record = jsonData[0];",
+                  "        pm.expect(record).to.have.property('day');",
+                  "        pm.expect(record).to.have.property('total_revenue');",
+                  "        pm.expect(record).to.have.property('total_orders');",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/stores/{{store_id}}/metrics/daily?start={{range_start}}&end={{range_end}}",
+              "host": ["{{base_url}}"],
+              "path": ["stores", "{{store_id}}", "metrics", "daily"],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "{{range_start}}"
+                },
+                {
+                  "key": "end",
+                  "value": "{{range_end}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CONNECTORS",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has connector status\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('database');",
+                  "    pm.expect(jsonData).to.have.property('token_check');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/health/connectors",
+              "host": ["{{base_url}}"],
+              "path": ["health", "connectors"]
+            }
+          }
+        },
+        {
+          "name": "Shopify - Get OAuth URL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has auth_url\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('auth_url');",
+                  "    pm.expect(jsonData.auth_url).to.include('myshopify.com');",
+                  "});",
+                  "",
+                  "pm.test(\"Response has state token\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('state');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"store_id\": \"{{store_id}}\",\n  \"shop_domain\": \"test-shop.myshopify.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/connectors/shopify/auth-url",
+              "host": ["{{base_url}}"],
+              "path": ["connectors", "shopify", "auth-url"]
+            }
+          }
+        },
+        {
+          "name": "Meta - Get OAuth URL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has auth_url\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('auth_url');",
+                  "    pm.expect(jsonData.auth_url).to.include('facebook.com');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"store_id\": \"{{store_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/connectors/meta/auth-url",
+              "host": ["{{base_url}}"],
+              "path": ["connectors", "meta", "auth-url"]
+            }
+          }
+        },
+        {
+          "name": "Google - Get OAuth URL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has auth_url\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('auth_url');",
+                  "    pm.expect(jsonData.auth_url).to.include('google.com');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"store_id\": \"{{store_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/connectors/google/auth-url",
+              "host": ["{{base_url}}"],
+              "path": ["connectors", "google", "auth-url"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SECURITY TESTS",
+      "item": [
+        {
+          "name": "Ownership - Cannot Access Other Store",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message is generic\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.equal('Store not found');",
+                  "    // Should NOT reveal store exists",
+                  "    pm.expect(jsonData.detail).to.not.include('permission');",
+                  "    pm.expect(jsonData.detail).to.not.include('other account');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/stores/00000000-0000-0000-0000-000000000000/orders",
+              "host": ["{{base_url}}"],
+              "path": ["stores", "00000000-0000-0000-0000-000000000000", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Auth - Missing Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 403\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Auth - Invalid Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error is 'Invalid or expired token'\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('Invalid');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer invalid_token_xyz"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "WEBHOOK SIMULATION",
+      "item": [
+        {
+          "name": "Shopify Webhook - orders/create",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Webhook acknowledged\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.equal('received');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Shopify-Hmac-SHA256",
+                "value": "placeholder-signature"
+              },
+              {
+                "key": "X-Shopify-Topic",
+                "value": "orders/create"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": 123456789,\n  \"created_at\": \"2026-08-31T14:00:00Z\",\n  \"total_price\": \"250.00\",\n  \"total_discounts\": \"0.00\",\n  \"currency\": \"USD\",\n  \"line_items\": [],\n  \"shipping_lines\": [],\n  \"transactions\": []\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/connectors/shopify/webhook/{{store_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["connectors", "shopify", "webhook", "{{store_id}}"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "// Set base URL",
+          "if (!pm.environment.get('base_url')) {",
+          "    pm.environment.set('base_url', 'http://localhost:8000');",
+          "}",
+          "",
+          "// Set default date range (last 30 days)",
+          "if (!pm.environment.get('range_start')) {",
+          "    let now = new Date();",
+          "    let start = new Date(now.getTime() - 30*24*60*60*1000);",
+          "    pm.environment.set('range_start', start.toISOString());",
+          "    pm.environment.set('range_end', now.toISOString());",
+          "}"
+        ]
+      }
+    }
+  ]
+}

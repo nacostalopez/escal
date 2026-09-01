@@ -1,0 +1,355 @@
+{
+  "info": {
+    "name": "Escal API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000" }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": { "exec": ["pm.collectionVariables.set('runId', Date.now());"] }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('body ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+            ]
+          }
+        }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+    },
+    {
+      "name": "Register",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test('has access_token', () => pm.expect(json.access_token).to.be.a('string'));",
+              "pm.collectionVariables.set('token', json.access_token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"account_name\": \"Postman Test Account\", \"email\": \"postman-{{runId}}@escal-postman.dev\", \"password\": \"Postman12345!\"}"
+        },
+        "url": "{{baseUrl}}/auth/register"
+      }
+    },
+    {
+      "name": "Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('has access_token', () => pm.expect(json.access_token).to.be.a('string'));",
+              "pm.collectionVariables.set('token', json.access_token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"postman-{{runId}}@escal-postman.dev\", \"password\": \"Postman12345!\"}"
+        },
+        "url": "{{baseUrl}}/auth/login"
+      }
+    },
+    {
+      "name": "Get Me",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('email matches', () => pm.expect(pm.response.json().email).to.eql('postman-' + pm.collectionVariables.get('runId') + '@escal-postman.dev'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/auth/me"
+      }
+    },
+    {
+      "name": "Get Me - No Token (expect rejected)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('rejected as unauthorized (401/403)', () => pm.expect([401,403]).to.include(pm.response.code));"
+            ]
+          }
+        }
+      ],
+      "request": { "method": "GET", "url": "{{baseUrl}}/auth/me" }
+    },
+    {
+      "name": "Create Store",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test('platform is shopify', () => pm.expect(json.platform).to.eql('shopify'));",
+              "pm.collectionVariables.set('storeId', json.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"Postman Test Store\", \"platform\": \"shopify\", \"currency\": \"USD\", \"timezone\": \"UTC\"}"
+        },
+        "url": "{{baseUrl}}/stores"
+      }
+    },
+    {
+      "name": "List Stores",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('contains created store', () => pm.expect(json.some(s => s.id === pm.collectionVariables.get('storeId'))).to.be.true);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/stores"
+      }
+    },
+    {
+      "name": "Ingest Order",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "pm.test('1 row inserted', () => pm.expect(pm.response.json().inserted).to.eql(1));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "[{\"time\": \"2026-01-15T00:00:00Z\", \"order_id\": \"pm-order-{{runId}}\", \"gross_amount\": 200.00, \"discounts\": 10.00, \"shipping_fee\": 5.00, \"payment_gateway_fee\": 3.00, \"cogs_total\": 50.00, \"currency\": \"USD\"}]"
+        },
+        "url": "{{baseUrl}}/stores/{{storeId}}/orders"
+      }
+    },
+    {
+      "name": "Ingest Ad Spend",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "pm.test('1 row inserted', () => pm.expect(pm.response.json().inserted).to.eql(1));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "[{\"time\": \"2026-01-15T00:00:00Z\", \"platform\": \"postman-test\", \"campaign_id\": \"camp-{{runId}}\", \"spend\": 33.00}]"
+        },
+        "url": "{{baseUrl}}/stores/{{storeId}}/ad-spend"
+      }
+    },
+    {
+      "name": "Metrics Summary",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('revenue is 200.00', () => pm.expect(parseFloat(json.revenue)).to.eql(200.00));",
+              "pm.test('net_profit is 132.00 (200-10-5-3-50)', () => pm.expect(parseFloat(json.net_profit)).to.eql(132.00));",
+              "pm.test('total_ad_spend is 33.00', () => pm.expect(parseFloat(json.total_ad_spend)).to.eql(33.00));",
+              "pm.test('real_profit_after_ads is 99.00 (132-33)', () => pm.expect(parseFloat(json.real_profit_after_ads)).to.eql(99.00));",
+              "pm.test('true_roas is 6.06 (200/33 rounded)', () => pm.expect(parseFloat(json.true_roas)).to.eql(6.06));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/stores/{{storeId}}/metrics/summary?start=2026-01-01T00:00:00Z&end=2026-01-31T23:59:59Z"
+      }
+    },
+    {
+      "name": "Connector Health (before webhook)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/stores/{{storeId}}/connectors/health"
+      }
+    },
+    {
+      "name": "Shopify Webhook - Valid Signature",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const body = '{\"id\":999001,\"total_price\":\"49.99\",\"total_discounts\":\"0.00\",\"shipping_lines\":[{\"price\":\"5.00\"}],\"transactions\":[{\"kind\":\"capture\",\"gateway_fee\":\"1.50\"}],\"line_items\":[],\"created_at\":\"2026-01-16T00:00:00Z\",\"currency\":\"USD\",\"note\":\"utm_source=postman\\u0026utm_campaign=test\"}';",
+              "const hash = CryptoJS.HmacSHA256(body, '');",
+              "const signature = CryptoJS.enc.Base64.stringify(hash);",
+              "pm.collectionVariables.set('webhookBody', body);",
+              "pm.collectionVariables.set('webhookSignature', signature);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('received', () => pm.expect(pm.response.json().status).to.eql('received'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Shopify-Hmac-Sha256", "value": "{{webhookSignature}}" },
+          { "key": "X-Shopify-Topic", "value": "orders/create" }
+        ],
+        "body": { "mode": "raw", "raw": "{{webhookBody}}" },
+        "url": "{{baseUrl}}/connectors/shopify/webhook/{{storeId}}"
+      }
+    },
+    {
+      "name": "Shopify Webhook - Invalid Signature (expect 401)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Shopify-Hmac-Sha256", "value": "not-a-real-signature" },
+          { "key": "X-Shopify-Topic", "value": "orders/create" }
+        ],
+        "body": { "mode": "raw", "raw": "{\"id\":999002,\"total_price\":\"10.00\"}" },
+        "url": "{{baseUrl}}/connectors/shopify/webhook/{{storeId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 401', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Connector Health (after webhook)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('shopify last_success_at set', () => pm.expect(json.shopify.last_success_at).to.not.be.null);",
+              "pm.test('shopify last_error reflects the rejected call', () => pm.expect(json.shopify.last_error).to.eql('Invalid webhook signature'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/stores/{{storeId}}/connectors/health"
+      }
+    },
+    {
+      "name": "Order visible after webhook ingest",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('webhook order present', () => pm.expect(json.some(o => o.order_id === '999001')).to.be.true);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/stores/{{storeId}}/orders"
+      }
+    }
+  ]
+}
