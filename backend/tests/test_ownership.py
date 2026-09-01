@@ -1,9 +1,11 @@
 """Tests for ownership scoping - ensuring users can only access their account's data."""
-import pytest
-from fastapi import status
 from uuid import uuid4
 
+import pytest
+from fastapi import status
 
+
+@pytest.mark.db
 class TestOwnershipScoping:
     """Test that ownership scoping prevents unauthorized access."""
 

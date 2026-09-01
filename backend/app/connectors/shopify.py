@@ -1,11 +1,10 @@
 """Shopify connector implementation."""
-import hmac
-import hashlib
-import json
-from typing import Optional
-from datetime import datetime, timedelta
-from urllib.parse import urlencode, parse_qs
 import base64
+import hashlib
+import hmac
+from datetime import datetime
+from typing import Optional
+from urllib.parse import urlencode
 
 import requests
 from pydantic_settings import BaseSettings
@@ -29,6 +28,10 @@ class ShopifyConnector(BaseConnector):
 
     API_VERSION = "2024-01"
     API_BASE = "https://{shop}.myshopify.com/admin/api/{version}"
+    # Bump API_VERSION when Shopify deprecates it and log what changed here.
+    BREAKING_CHANGES = [
+        "2024-01: initial implementation",
+    ]
 
     def __init__(self, store_id: str, shop_domain: Optional[str] = None):
         super().__init__(store_id, "shopify")
@@ -139,8 +142,8 @@ class ShopifyConnector(BaseConnector):
         gross_amount = float(shopify_order.get("total_price", 0))
         discounts = float(shopify_order.get("total_discounts", 0))
         shipping_fee = sum(
-            float(l.get("price", 0))
-            for l in shopify_order.get("shipping_lines", [])
+            float(line.get("price", 0))
+            for line in shopify_order.get("shipping_lines", [])
         )
         
         # Attempt to extract gateway fee from transactions

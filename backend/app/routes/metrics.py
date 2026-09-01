@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_owned_store
 from app.models import Store
-from app.schemas.metrics import MetricsSummaryOut, DailyMetricOut
+from app.schemas.metrics import DailyMetricOut, MetricsSummaryOut
 
 router = APIRouter(prefix="/stores/{store_id}/metrics", tags=["metrics"])
 

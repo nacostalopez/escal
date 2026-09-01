@@ -1,12 +1,13 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, insert
+from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_owned_store
-from app.models import Store, pixel_events as pixel_events_table
+from app.models import Store
+from app.models import pixel_events as pixel_events_table
 from app.schemas.pixel_events import PixelEventCreate
 
 router = APIRouter(prefix="/stores/{store_id}/pixel-events", tags=["pixel-events"])

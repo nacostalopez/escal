@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_owned_store
-from app.models import Store, Product
-from app.schemas.products import ProductUpsert, ProductOut
+from app.models import Product, Store
+from app.schemas.products import ProductOut, ProductUpsert
 
 router = APIRouter(prefix="/stores/{store_id}/products", tags=["products"])
 

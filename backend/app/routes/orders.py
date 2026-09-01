@@ -2,12 +2,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_owned_store
-from app.models import Store, orders as orders_table
+from app.models import Store
+from app.models import orders as orders_table
 from app.schemas.orders import OrderCreate, OrderOut
 
 router = APIRouter(prefix="/stores/{store_id}/orders", tags=["orders"])

@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: escal_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg2://test:test@localhost:5433/escal_test
+      JWT_SECRET: ci-test-secret
+      CREDENTIALS_ENCRYPTION_KEY: Qxsu0Kb675R0dWY-WeAE-1hvcXLTQj74_pJrlsr_kG4=
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Install ruff
+        run: pip install ruff==0.6.9
+
+      - name: Lint
+        working-directory: backend
+        run: ruff check .
+
+      - name: Check no real .env is committed
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$'; then
+            echo "A real .env file is tracked in git — only .env.example should ever be committed."
+            exit 1
+          fi
+
+      - name: Apply database schema (db/init/*.sql)
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          for f in db/init/*.sql; do
+            echo "Applying $f"
+            PGPASSWORD=test psql -h localhost -p 5433 -U test -d escal_test -f "$f"
+          done
+
+      - name: Validate connector implementations match BaseConnector
+        working-directory: backend
+        run: pytest tests/test_connectors_interface.py -v
+
+      - name: Run test suite
+        working-directory: backend
+        run: pytest -v

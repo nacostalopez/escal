@@ -1,9 +1,9 @@
 """Meta (Facebook) Ads connector for ad spend tracking."""
-from typing import Optional, List
-from datetime import datetime, timedelta
 import hashlib
 import hmac
 import json
+from datetime import datetime
+from typing import List, Optional
 
 import requests
 from pydantic_settings import BaseSettings
@@ -27,6 +27,10 @@ class MetaConnector(BaseConnector):
 
     API_VERSION = "v19.0"
     API_BASE = f"https://graph.facebook.com/{API_VERSION}"
+    # Bump API_VERSION when Meta deprecates it (~2yr cycle) and log what changed here.
+    BREAKING_CHANGES = [
+        "v19.0: initial implementation",
+    ]
 
     def __init__(self, store_id: str, ad_account_id: Optional[str] = None):
         super().__init__(store_id, "meta")

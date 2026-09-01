@@ -2,15 +2,14 @@ import os
 from uuid import uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from fastapi.testclient import TestClient
 
-from app.main import app
 from app.database import Base, get_db
-from app.models.relational import Account, User, Store, StoreCredential
-from app.security import hash_password, encrypt_secret
-
+from app.main import app
+from app.models.relational import Account, Store, StoreCredential, User
+from app.security import encrypt_secret, hash_password
 
 # Use test database (via docker-compose test-db service)
 TEST_DATABASE_URL = os.getenv(

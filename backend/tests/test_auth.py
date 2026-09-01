@@ -3,6 +3,7 @@ import pytest
 from fastapi import status
 
 
+@pytest.mark.db
 class TestRegister:
     """Test user registration."""
 
@@ -50,6 +51,7 @@ class TestRegister:
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
+@pytest.mark.db
 class TestLogin:
     """Test user login."""
 
@@ -86,6 +88,7 @@ class TestLogin:
         assert "Invalid email or password" in response.json()["detail"]
 
 
+@pytest.mark.db
 class TestAuthenticatedRequests:
     """Test authenticated endpoints."""
 

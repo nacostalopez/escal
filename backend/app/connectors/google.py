@@ -1,7 +1,6 @@
 """Google Ads connector for ad spend tracking."""
-from typing import Optional, List
 from datetime import datetime, timedelta
-import json
+from typing import List, Optional
 
 import requests
 from pydantic_settings import BaseSettings
@@ -28,6 +27,10 @@ class GoogleAdsConnector(BaseConnector):
     API_BASE = f"https://googleads.googleapis.com/{API_VERSION}"
     OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
     TOKEN_URL = "https://oauth2.googleapis.com/token"
+    # Bump API_VERSION when Google sunsets it (~1yr cycle) and log what changed here.
+    BREAKING_CHANGES = [
+        "v15: initial implementation",
+    ]
 
     def __init__(self, store_id: str, customer_id: Optional[str] = None):
         super().__init__(store_id, "google")

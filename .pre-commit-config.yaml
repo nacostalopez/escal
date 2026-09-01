@@ -1,0 +1,20 @@
+# Install once with: pip install pre-commit && pre-commit install
+# (run from the repo root). See DEVELOPMENT.md for details.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  - repo: local
+    hooks:
+      - id: pytest-offline
+        name: pytest (tests not requiring a live database)
+        entry: bash -c 'cd backend && pytest -m "not db" -q'
+        language: system
+        pass_filenames: false
+        files: ^backend/

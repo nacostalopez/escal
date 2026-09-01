@@ -35,6 +35,16 @@ This document describes how to develop, test, and deploy the Escal backend.
 5. **Configure environment variables** (especially API keys for connectors):
    - Edit `.env` with your Shopify, Meta, and Google API credentials
 
+6. **Install the pre-commit hook** (from the repo root, not `backend/`):
+   ```bash
+   pip install pre-commit
+   pre-commit install
+   ```
+   This runs `ruff` (lint + format, auto-fixing) and the tests that don't need
+   a live database (`pytest -m "not db"`) before every commit. It won't catch
+   DB-dependent test failures — run the full suite yourself before pushing
+   (see Testing below).
+
 ### Running the Application
 
 1. **Start Docker services:**
@@ -102,6 +112,22 @@ tests/test_auth.py::TestLogin::test_login_success PASSED
 tests/test_ownership.py::TestOwnershipScoping::test_cannot_access_other_account_store PASSED
 tests/test_encryption.py::TestEncryption::test_encrypt_decrypt_roundtrip PASSED
 ```
+
+### Test Markers
+
+Tests are marked `auth`, `ownership`, `encryption`, `connector`, `integration`,
+`slow`, and — importantly — `db` for anything needing a live database
+connection (`docker compose up test-db -d` first). Run just the offline ones
+with `pytest -m "not db"` (this is what the pre-commit hook runs); run
+everything with a plain `pytest`.
+
+## Continuous Integration
+
+`.github/workflows/ci.yml` runs on every push/PR: spins up a `timescaledb`
+service container, applies `db/init/*.sql` to it directly with `psql`
+(mirroring what `docker-entrypoint-initdb.d` does locally), then runs `ruff
+check`, a check that no real `.env` is committed, and the full `pytest`
+suite. See `.github/pull_request_template.md` for the PR checklist.
 
 ## Connector Architecture
 
@@ -199,32 +225,85 @@ curl -X POST http://localhost:8000/connectors/google/sync-ad-spend \
 - Spend in micros (converted to currency)
 - Stored in `ad_spend` table with `platform="google"`
 
+### Sync Status / Health
+
+`GET /stores/{store_id}/connectors/health` (ownership-scoped, like every
+other `/stores/{id}/...` route) returns per-provider status from the
+`connector_status` table:
+
+```json
+{
+  "shopify": {"last_synced_at": "...", "last_success_at": "...", "last_error": null},
+  "meta": {"last_synced_at": "...", "last_success_at": "...", "last_error": "..."}
+}
+```
+
+Every OAuth callback, ad-spend sync, and Shopify webhook call updates this —
+see `_upsert_connector_status()` in `app/routes/connectors.py`. Two related
+audit tables exist for lower-level detail: `shopify_webhooks_log` (every
+webhook received, valid or not) and `token_refresh_audit` (every Google
+token-refresh attempt) — see `db/init/006_*.sql` through `008_*.sql`.
+
 ### Adding a New Connector
 
-1. Create `app/connectors/newconnector.py`:
-   ```python
-   from app.connectors import BaseConnector
-   
-   class NewConnector(BaseConnector):
-       def get_oauth_url(self, state: str) -> str: ...
-       def exchange_auth_code(self, code: str, redirect_uri: str) -> OAuthToken: ...
-       # ... implement other methods
-   ```
+Tiendanube and MercadoPago are next, and should be a template exercise —
+copy the Shopify (webhook-based) or Meta/Google (pull-based) pattern and
+adjust. If it's harder than that, the pattern itself needs fixing before
+adding a fourth/fifth connector on top of it.
 
-2. Add settings to `.env.example`
+Checklist (also enforced via `.github/pull_request_template.md`):
 
-3. Add OAuth endpoints in `app/routes/connectors.py`:
-   ```python
-   @router.post("/newconnector/auth-url")
-   def get_newconnector_auth_url(...): ...
-   
-   @router.post("/newconnector/callback")
-   def newconnector_oauth_callback(...): ...
-   ```
+- [ ] Create `app/connectors/newconnector.py` implementing every
+      `BaseConnector` abstract method:
+      ```python
+      from app.connectors import BaseConnector
 
-4. Write tests in `tests/test_connectors.py`
+      class NewConnector(BaseConnector):
+          def get_oauth_url(self, state: str) -> str: ...
+          def exchange_auth_code(self, code: str, redirect_uri: str) -> OAuthToken: ...
+          # ... implement other methods
+      ```
+      (Instantiating a subclass missing a method raises `TypeError` —
+      `tests/test_connectors_interface.py` catches this in CI.)
+- [ ] Add a `BREAKING_CHANGES` list next to `API_VERSION`, like the other
+      three connectors, so future API-version bumps have somewhere to log
+      what changed.
+- [ ] Add settings to **both** `.env.example` (root) and `backend/.env.example`
+- [ ] Add OAuth endpoints in `app/routes/connectors.py`:
+      ```python
+      @router.post("/newconnector/auth-url")
+      def get_newconnector_auth_url(...): ...
+
+      @router.post("/newconnector/callback")
+      def newconnector_oauth_callback(...): ...
+      ```
+- [ ] Encrypt tokens with `encrypt_secret` before storing in `store_credentials`
+- [ ] Call `_upsert_connector_status(...)` on every OAuth callback and sync
+      attempt (success and failure) so `GET /stores/{id}/connectors/health`
+      reflects it — see the existing connectors for the pattern
+- [ ] If ad-spend data: match the exact field set in
+      `tests/test_connectors_schema.py::AD_SPEND_REQUIRED_FIELDS` — Meta and
+      Google must stay identical since they feed the same table
+- [ ] Write tests in `tests/test_connectors_{provider}.py`
+- [ ] Update this doc's "Implemented Connectors" section
 
 ## Security Notes
+
+See `SECURITY.md` (repo root) for the credential rotation schedule.
+
+### Ownership Audit
+
+`scripts/audit_ownership.py` checks that every `store_credentials` row still
+decrypts with the current `CREDENTIALS_ENCRYPTION_KEY`, and that no
+`store_credentials`/`orders`/`pixel_events`/`ad_spend` row references a
+store that no longer exists (the time-series hypertables have no FK
+constraint enforcing this at the database level). Run it periodically:
+
+```bash
+cd backend && python ../scripts/audit_ownership.py
+```
+
+Exits non-zero on any finding, so it can be wired into a cron/CI job later.
 
 ### Credential Encryption
 
@@ -338,6 +417,9 @@ The `sync_google_ad_spend` endpoint automatically refreshes expired tokens.
 2. ✅ Shopify OAuth + order webhook
 3. ✅ Meta Ads connector
 4. ✅ Google Ads connector
-5. ⏳ Tiendanube connector (same pattern)
-6. ⏳ MercadoPago connector (same pattern)
-7. ⏳ Frontend dashboard (once connectors are stable)
+5. ✅ CI (GitHub Actions), pre-commit hook, PR template
+6. ✅ Connector sync-status tracking + `/connectors/health` + ownership audit script
+7. ✅ Secrets rotation policy (`SECURITY.md`)
+8. ⏳ Tiendanube connector (same pattern)
+9. ⏳ MercadoPago connector (same pattern)
+10. ⏳ Frontend dashboard (once connectors are stable)

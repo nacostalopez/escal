@@ -2,8 +2,8 @@
 import pytest
 from cryptography.fernet import InvalidToken
 
-from app.security import encrypt_secret, decrypt_secret
 from app.models import StoreCredential
+from app.security import decrypt_secret, encrypt_secret
 
 
 class TestEncryption:
@@ -48,6 +48,7 @@ class TestEncryption:
         with pytest.raises(InvalidToken):
             decrypt_secret("not_a_valid_fernet_token")
 
+    @pytest.mark.db
     def test_credentials_stored_encrypted_in_db(self, test_db_session, test_store):
         """Test that credentials are stored encrypted in the database."""
         from uuid import uuid4
@@ -77,6 +78,7 @@ class TestEncryption:
         decrypted_token = decrypt_secret(raw_credential.access_token)
         assert decrypted_token == plaintext_token
 
+    @pytest.mark.db
     def test_refresh_token_encryption(self, test_db_session, test_store):
         """Test that refresh tokens are also encrypted."""
         from uuid import uuid4
