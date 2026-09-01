@@ -32,10 +32,13 @@
                   "    pm.expect(jsonData.token_type).to.equal('bearer');",
                   "});",
                   "",
-                  "// Store token for next requests",
+                  "// Store token and the actual registered credentials for the Login step",
                   "var jsonData = pm.response.json();",
+                  "var requestBody = JSON.parse(pm.request.body.raw);",
                   "pm.environment.set('auth_token', jsonData.access_token);",
-                  "pm.environment.set('account_name', pm.request.body.raw ? JSON.parse(pm.request.body.raw).account_name : 'Test Account');"
+                  "pm.environment.set('account_name', requestBody.account_name);",
+                  "pm.environment.set('login_email', requestBody.email);",
+                  "pm.environment.set('login_password', requestBody.password);"
                 ]
               }
             }
@@ -54,8 +57,13 @@
             },
             "url": {
               "raw": "{{base_url}}/auth/register",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "register"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
             }
           }
         },
@@ -75,9 +83,10 @@
                   "    pm.expect(jsonData).to.have.property('access_token');",
                   "});",
                   "",
-                  "// Update token",
-                  "var jsonData = pm.response.json();",
-                  "pm.environment.set('auth_token', jsonData.access_token);"
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.environment.set('auth_token', jsonData.access_token);",
+                  "}"
                 ]
               }
             }
@@ -96,8 +105,13 @@
             },
             "url": {
               "raw": "{{base_url}}/auth/login",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "login"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
             }
           }
         },
@@ -136,8 +150,13 @@
             ],
             "url": {
               "raw": "{{base_url}}/auth/me",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "me"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
             }
           }
         },
@@ -154,7 +173,8 @@
                   "",
                   "pm.test(\"Error message present\", function () {",
                   "    var jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.detail).to.include('Invalid');"
+                  "    pm.expect(jsonData.detail).to.include('Invalid');",
+                  "});"
                 ]
               }
             }
@@ -173,8 +193,13 @@
             },
             "url": {
               "raw": "{{base_url}}/auth/login",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "login"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
             }
           }
         }
@@ -212,14 +237,27 @@
             ],
             "url": {
               "raw": "{{base_url}}/stores",
-              "host": ["{{base_url}}"],
-              "path": ["stores"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "stores"
+              ]
             }
           }
         },
         {
           "name": "Create Store",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('store_timestamp', Date.now());"
+                ],
+                "type": "text/javascript"
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -236,7 +274,7 @@
                   "",
                   "pm.test(\"Store has correct name\", function () {",
                   "    var jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.name).to.equal('Test Store ' + pm.environment.get('timestamp'));",
+                  "    pm.expect(jsonData.name).to.equal('Test Store ' + pm.environment.get('store_timestamp'));",
                   "});",
                   "",
                   "// Save store_id for next requests",
@@ -260,12 +298,16 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Test Store {{$timestamp}}\",\n  \"platform\": \"shopify\",\n  \"currency\": \"USD\",\n  \"timezone\": \"America/New_York\"\n}"
+              "raw": "{\n  \"name\": \"Test Store {{store_timestamp}}\",\n  \"platform\": \"shopify\",\n  \"currency\": \"USD\",\n  \"timezone\": \"America/New_York\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/stores",
-              "host": ["{{base_url}}"],
-              "path": ["stores"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "stores"
+              ]
             }
           }
         },
@@ -305,8 +347,13 @@
             ],
             "url": {
               "raw": "{{base_url}}/stores/{{store_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["stores", "{{store_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "stores",
+                "{{store_id}}"
+              ]
             }
           }
         }
@@ -353,8 +400,14 @@
             },
             "url": {
               "raw": "{{base_url}}/stores/{{store_id}}/orders",
-              "host": ["{{base_url}}"],
-              "path": ["stores", "{{store_id}}", "orders"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "stores",
+                "{{store_id}}",
+                "orders"
+              ]
             }
           }
         },
@@ -397,8 +450,14 @@
             ],
             "url": {
               "raw": "{{base_url}}/stores/{{store_id}}/orders?start={{range_start}}&end={{range_end}}",
-              "host": ["{{base_url}}"],
-              "path": ["stores", "{{store_id}}", "orders"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "stores",
+                "{{store_id}}",
+                "orders"
+              ],
               "query": [
                 {
                   "key": "start",
@@ -455,8 +514,14 @@
             },
             "url": {
               "raw": "{{base_url}}/stores/{{store_id}}/ad-spend",
-              "host": ["{{base_url}}"],
-              "path": ["stores", "{{store_id}}", "ad-spend"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "stores",
+                "{{store_id}}",
+                "ad-spend"
+              ]
             }
           }
         },
@@ -499,8 +564,14 @@
             ],
             "url": {
               "raw": "{{base_url}}/stores/{{store_id}}/ad-spend?platform=meta",
-              "host": ["{{base_url}}"],
-              "path": ["stores", "{{store_id}}", "ad-spend"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "stores",
+                "{{store_id}}",
+                "ad-spend"
+              ],
               "query": [
                 {
                   "key": "platform",
@@ -566,8 +637,15 @@
             ],
             "url": {
               "raw": "{{base_url}}/stores/{{store_id}}/metrics/summary?start={{range_start}}&end={{range_end}}",
-              "host": ["{{base_url}}"],
-              "path": ["stores", "{{store_id}}", "metrics", "summary"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "stores",
+                "{{store_id}}",
+                "metrics",
+                "summary"
+              ],
               "query": [
                 {
                   "key": "start",
@@ -620,8 +698,15 @@
             ],
             "url": {
               "raw": "{{base_url}}/stores/{{store_id}}/metrics/daily?start={{range_start}}&end={{range_end}}",
-              "host": ["{{base_url}}"],
-              "path": ["stores", "{{store_id}}", "metrics", "daily"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "stores",
+                "{{store_id}}",
+                "metrics",
+                "daily"
+              ],
               "query": [
                 {
                   "key": "start",
@@ -651,10 +736,9 @@
                   "    pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "pm.test(\"Response has connector status\", function () {",
+                  "pm.test(\"Response is an object keyed by provider\", function () {",
                   "    var jsonData = pm.response.json();",
-                  "    pm.expect(jsonData).to.have.property('database');",
-                  "    pm.expect(jsonData).to.have.property('token_check');",
+                  "    pm.expect(jsonData).to.be.an('object');",
                   "});"
                 ]
               }
@@ -669,9 +753,16 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/health/connectors",
-              "host": ["{{base_url}}"],
-              "path": ["health", "connectors"]
+              "raw": "{{base_url}}/stores/{{store_id}}/connectors/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "stores",
+                "{{store_id}}",
+                "connectors",
+                "health"
+              ]
             }
           }
         },
@@ -712,14 +803,26 @@
                 "value": "Bearer {{auth_token}}"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"store_id\": \"{{store_id}}\",\n  \"shop_domain\": \"test-shop.myshopify.com\"\n}"
-            },
             "url": {
-              "raw": "{{base_url}}/connectors/shopify/auth-url",
-              "host": ["{{base_url}}"],
-              "path": ["connectors", "shopify", "auth-url"]
+              "raw": "{{base_url}}/connectors/shopify/auth-url?store_id={{store_id}}&shop_domain=test-shop.myshopify.com",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "connectors",
+                "shopify",
+                "auth-url"
+              ],
+              "query": [
+                {
+                  "key": "store_id",
+                  "value": "{{store_id}}"
+                },
+                {
+                  "key": "shop_domain",
+                  "value": "test-shop.myshopify.com"
+                }
+              ]
             }
           }
         },
@@ -755,14 +858,22 @@
                 "value": "Bearer {{auth_token}}"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"store_id\": \"{{store_id}}\"\n}"
-            },
             "url": {
-              "raw": "{{base_url}}/connectors/meta/auth-url",
-              "host": ["{{base_url}}"],
-              "path": ["connectors", "meta", "auth-url"]
+              "raw": "{{base_url}}/connectors/meta/auth-url?store_id={{store_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "connectors",
+                "meta",
+                "auth-url"
+              ],
+              "query": [
+                {
+                  "key": "store_id",
+                  "value": "{{store_id}}"
+                }
+              ]
             }
           }
         },
@@ -798,14 +909,22 @@
                 "value": "Bearer {{auth_token}}"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"store_id\": \"{{store_id}}\"\n}"
-            },
             "url": {
-              "raw": "{{base_url}}/connectors/google/auth-url",
-              "host": ["{{base_url}}"],
-              "path": ["connectors", "google", "auth-url"]
+              "raw": "{{base_url}}/connectors/google/auth-url?store_id={{store_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "connectors",
+                "google",
+                "auth-url"
+              ],
+              "query": [
+                {
+                  "key": "store_id",
+                  "value": "{{store_id}}"
+                }
+              ]
             }
           }
         }
@@ -846,8 +965,14 @@
             ],
             "url": {
               "raw": "{{base_url}}/stores/00000000-0000-0000-0000-000000000000/orders",
-              "host": ["{{base_url}}"],
-              "path": ["stores", "00000000-0000-0000-0000-000000000000", "orders"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "stores",
+                "00000000-0000-0000-0000-000000000000",
+                "orders"
+              ]
             }
           }
         },
@@ -858,8 +983,11 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Status code is 403\", function () {",
-                  "    pm.response.to.have.status(403);",
+                  "// fastapi/starlette's HTTPBearer returns 401 (not the more conventional 403)",
+                  "// for a missing Authorization header -- pre-existing, documented, tracked",
+                  "// separately (see backend/tests/test_auth.py::test_get_current_user_no_token).",
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
                   "});"
                 ]
               }
@@ -870,8 +998,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/auth/me",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "me"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
             }
           }
         },
@@ -904,8 +1037,13 @@
             ],
             "url": {
               "raw": "{{base_url}}/auth/me",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "me"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
             }
           }
         }
@@ -921,13 +1059,16 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Status code is 200\", function () {",
-                  "    pm.response.to.have.status(200);",
+                  "// This request uses a placeholder HMAC signature (we don't bake the real",
+                  "// shared secret into a committed collection), so the endpoint is expected",
+                  "// to reject it -- this verifies signature validation actually runs.",
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
                   "});",
                   "",
-                  "pm.test(\"Webhook acknowledged\", function () {",
+                  "pm.test(\"Rejected for invalid signature\", function () {",
                   "    var jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.status).to.equal('received');",
+                  "    pm.expect(jsonData.detail).to.equal('Invalid webhook signature');",
                   "});"
                 ]
               }
@@ -955,8 +1096,15 @@
             },
             "url": {
               "raw": "{{base_url}}/connectors/shopify/webhook/{{store_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["connectors", "shopify", "webhook", "{{store_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "connectors",
+                "shopify",
+                "webhook",
+                "{{store_id}}"
+              ]
             }
           }
         }
