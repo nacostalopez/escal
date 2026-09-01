@@ -1,0 +1,17 @@
+{
+  "workspace": {
+    "id": "68abab1a-281f-4b13-9c18-ab7a12e3c91f"
+  },
+  "entities": {
+    "environments": [
+      "..\\Escal-Env-Local.postman_environment.json"
+    ],
+    "flows": [],
+    "globals": [],
+    "mocks": [],
+    "specs": [],
+    "collections": [
+      "..\\Escal-API-Tests.postman_collection.json"
+    ]
+  }
+}
