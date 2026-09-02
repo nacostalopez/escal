@@ -11,11 +11,21 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.connectors.google import GoogleAdsConnector
+from app.connectors.mercadopago import MercadoPagoConnector
 from app.connectors.meta import MetaConnector
 from app.connectors.shopify import ShopifyConnector
+from app.connectors.tiendanube import TiendanubeConnector
 from app.database import get_db
-from app.dependencies import get_current_user, get_owned_store
-from app.models import ConnectorStatus, ShopifyWebhookLog, Store, StoreCredential, TokenRefreshAudit, User
+from app.dependencies import get_owned_store, require_role
+from app.models import (
+    ConnectorStatus,
+    ShopifyWebhookLog,
+    Store,
+    StoreCredential,
+    TiendanubeWebhookLog,
+    TokenRefreshAudit,
+    User,
+)
 from app.rate_limit import limiter
 from app.security import decrypt_secret, encrypt_secret
 
@@ -61,30 +71,24 @@ def _upsert_connector_status(
 
 @router.post("/shopify/auth-url")
 def get_shopify_auth_url(
-    store_id: UUID,
     shop_domain: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
 ):
     """Get Shopify OAuth authorization URL.
 
     Args:
-        store_id: ID of store to connect
         shop_domain: Shopify shop domain (e.g., "mystore.myshopify.com")
 
     Returns:
         Authorization URL to redirect user to
     """
-    store = db.get(Store, store_id)
-    if not store or store.account_id != current_user.account_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
-
     # Generate state token for CSRF protection
     state_token = str(uuid4())
 
     # Store state in session or cache (for demo, we'll use a simple approach)
     # In production, store in Redis or database
-    connector = ShopifyConnector(str(store_id), shop_domain)
+    connector = ShopifyConnector(str(store.id), shop_domain)
     auth_url = connector.get_oauth_url(state_token)
 
     return {
@@ -98,8 +102,8 @@ def shopify_oauth_callback(
     code: str,
     shop: str,
     state: Optional[str] = None,
-    store_id: Optional[UUID] = None,
-    current_user: User = Depends(get_current_user),
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Handle Shopify OAuth callback.
@@ -108,19 +112,12 @@ def shopify_oauth_callback(
         code: Authorization code from Shopify
         shop: Shop domain from Shopify
         state: State token for CSRF validation
-        store_id: ID of store to connect
 
     Returns:
         Success message
     """
-    if not store_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="store_id required")
-
-    store = db.get(Store, store_id)
-    if not store or store.account_id != current_user.account_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
-
     # TODO: Validate state token
+    store_id = store.id
 
     try:
         connector = ShopifyConnector(str(store_id), shop)
@@ -278,17 +275,12 @@ async def shopify_webhook(
 
 @router.post("/meta/auth-url")
 def get_meta_auth_url(
-    store_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
 ):
     """Get Meta OAuth authorization URL."""
-    store = db.get(Store, store_id)
-    if not store or store.account_id != current_user.account_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
-
     state_token = str(uuid4())
-    connector = MetaConnector(str(store_id))
+    connector = MetaConnector(str(store.id))
     auth_url = connector.get_oauth_url(state_token)
 
     return {
@@ -300,18 +292,13 @@ def get_meta_auth_url(
 @router.post("/meta/callback")
 def meta_oauth_callback(
     code: str,
-    store_id: Optional[UUID] = None,
     ad_account_id: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Handle Meta OAuth callback."""
-    if not store_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="store_id required")
-
-    store = db.get(Store, store_id)
-    if not store or store.account_id != current_user.account_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+    store_id = store.id
 
     try:
         connector = MetaConnector(str(store_id), ad_account_id)
@@ -352,16 +339,14 @@ def meta_oauth_callback(
 
 @router.post("/meta/sync-ad-spend")
 def sync_meta_ad_spend(
-    store_id: UUID,
     start_date: datetime = Query(...),
     end_date: datetime = Query(...),
-    current_user: User = Depends(get_current_user),
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Sync ad spend data from Meta."""
-    store = db.get(Store, store_id)
-    if not store or store.account_id != current_user.account_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+    store_id = store.id
 
     # Get Meta credentials
     credential = db.query(StoreCredential).filter_by(
@@ -409,17 +394,12 @@ def sync_meta_ad_spend(
 
 @router.post("/google/auth-url")
 def get_google_auth_url(
-    store_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
 ):
     """Get Google OAuth authorization URL."""
-    store = db.get(Store, store_id)
-    if not store or store.account_id != current_user.account_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
-
     state_token = str(uuid4())
-    connector = GoogleAdsConnector(str(store_id))
+    connector = GoogleAdsConnector(str(store.id))
     auth_url = connector.get_oauth_url(state_token)
 
     return {
@@ -431,18 +411,13 @@ def get_google_auth_url(
 @router.post("/google/callback")
 def google_oauth_callback(
     code: str,
-    store_id: Optional[UUID] = None,
     customer_id: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Handle Google OAuth callback."""
-    if not store_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="store_id required")
-
-    store = db.get(Store, store_id)
-    if not store or store.account_id != current_user.account_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+    store_id = store.id
 
     try:
         connector = GoogleAdsConnector(str(store_id), customer_id)
@@ -488,16 +463,14 @@ def google_oauth_callback(
 
 @router.post("/google/sync-ad-spend")
 def sync_google_ad_spend(
-    store_id: UUID,
     start_date: datetime = Query(...),
     end_date: datetime = Query(...),
-    current_user: User = Depends(get_current_user),
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Sync ad spend data from Google Ads."""
-    store = db.get(Store, store_id)
-    if not store or store.account_id != current_user.account_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+    store_id = store.id
 
     # Get Google credentials
     credential = db.query(StoreCredential).filter_by(
@@ -557,6 +530,327 @@ def sync_google_ad_spend(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to sync Google ad spend: {str(e)}",
+        )
+
+
+# ============================================================================
+# Tiendanube Connectors
+# ============================================================================
+
+@router.post("/tiendanube/auth-url")
+def get_tiendanube_auth_url(
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
+):
+    """Get Tiendanube OAuth authorization URL."""
+    state_token = str(uuid4())
+    connector = TiendanubeConnector(str(store.id))
+    auth_url = connector.get_oauth_url(state_token)
+
+    return {
+        "auth_url": auth_url,
+        "state": state_token,
+    }
+
+
+@router.post("/tiendanube/callback")
+def tiendanube_oauth_callback(
+    code: str,
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
+    db: Session = Depends(get_db),
+):
+    """Handle Tiendanube OAuth callback."""
+    store_id = store.id
+
+    try:
+        connector = TiendanubeConnector(str(store_id))
+        token = connector.exchange_auth_code(code, connector.settings.tiendanube_redirect_uri)
+
+        encrypted_token = encrypt_secret(token.access_token)
+
+        existing = db.query(StoreCredential).filter_by(
+            store_id=store_id,
+            provider="tiendanube",
+        ).first()
+
+        if existing:
+            existing.access_token = encrypted_token
+            existing.provider_account_id = connector.tn_store_id
+        else:
+            credential = StoreCredential(
+                id=uuid4(),
+                store_id=store_id,
+                provider="tiendanube",
+                access_token=encrypted_token,
+                provider_account_id=connector.tn_store_id,
+            )
+            db.add(credential)
+
+        db.commit()
+        _upsert_connector_status(db, store_id, "tiendanube", success=True)
+
+        return {
+            "status": "success",
+            "message": f"Store {store.name} connected to Tiendanube",
+        }
+    except Exception as e:
+        _upsert_connector_status(db, store_id, "tiendanube", success=False, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to authenticate with Tiendanube: {str(e)}",
+        )
+
+
+@router.post("/tiendanube/webhook/{store_id}")
+@limiter.limit("120/minute")
+async def tiendanube_webhook(
+    request: Request,
+    store_id: UUID,
+    x_linkedstore_hmac_sha256: str = Header(None),
+    x_linkedstore_topic: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Receive Tiendanube webhook.
+
+    Tiendanube sends events like order/created, order/updated, etc.
+    We validate the signature and process the event. Every call (accepted or
+    rejected) is logged to tiendanube_webhooks_log, and connector_status is
+    updated so GET /stores/{id}/connectors/health reflects the outcome.
+
+    Args:
+        store_id: ID of the store
+        request: HTTP request with body
+        x_linkedstore_hmac_sha256: HMAC signature from Tiendanube
+        x_linkedstore_topic: Event topic (e.g., "order/created")
+
+    Returns:
+        Acknowledgment
+    """
+    # Verify store exists
+    store = db.get(Store, store_id)
+    if not store or store.platform != "tiendanube":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+
+    # Get raw body for signature validation
+    body = await request.body()
+    body_str = body.decode("utf-8")
+    topic = x_linkedstore_topic or "unknown"
+
+    # Validate signature
+    connector = TiendanubeConnector(str(store_id))
+    if not connector.validate_webhook_signature(body_str, x_linkedstore_hmac_sha256):
+        db.add(TiendanubeWebhookLog(
+            id=uuid4(), store_id=store_id, topic=topic,
+            signature_valid=False, status="rejected",
+        ))
+        db.commit()
+        _upsert_connector_status(db, store_id, "tiendanube", synced=True, success=False, error="Invalid webhook signature")
+        logger.warning(
+            "tiendanube_webhook_rejected",
+            extra={"store_id": str(store_id), "topic": topic, "reason": "invalid_signature"},
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook signature")
+
+    try:
+        data = json.loads(body_str)
+
+        # Process based on event type
+        if topic in ("order/created", "order/updated"):
+            # Convert to standardized format
+            order_data = connector.process_webhook(topic, data)
+
+            # Ingest into orders table
+            from app.models import orders as orders_table
+
+            order_data.pop("net_profit", None)  # generated column — Postgres computes this
+            row = {"store_id": store_id, **order_data}
+            stmt = pg_insert(orders_table).values([row])
+            update_cols = {
+                c.name: stmt.excluded[c.name]
+                for c in orders_table.c
+                if c.name not in ("time", "store_id", "order_id", "net_profit")
+            }
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["store_id", "order_id", "time"],
+                set_=update_cols,
+            )
+            db.execute(stmt)
+
+        db.add(TiendanubeWebhookLog(
+            id=uuid4(), store_id=store_id, topic=topic,
+            signature_valid=True, status="processed",
+        ))
+        db.commit()
+        _upsert_connector_status(db, store_id, "tiendanube", synced=True, success=True)
+        logger.info(
+            "tiendanube_webhook_processed",
+            extra={"store_id": str(store_id), "topic": topic},
+        )
+
+        return {"status": "received"}
+    except Exception as e:
+        db.rollback()
+        db.add(TiendanubeWebhookLog(
+            id=uuid4(), store_id=store_id, topic=topic,
+            signature_valid=True, status="error", error_message=str(e),
+        ))
+        db.commit()
+        _upsert_connector_status(db, store_id, "tiendanube", synced=True, success=False, error=str(e))
+        logger.error(
+            "tiendanube_webhook_processing_failed",
+            extra={"store_id": str(store_id), "topic": topic, "error": str(e)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to process Tiendanube webhook: {str(e)}",
+        )
+
+
+# ============================================================================
+# MercadoPago Connectors
+# ============================================================================
+
+@router.post("/mercadopago/auth-url")
+def get_mercadopago_auth_url(
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
+):
+    """Get MercadoPago OAuth authorization URL."""
+    state_token = str(uuid4())
+    connector = MercadoPagoConnector(str(store.id))
+    auth_url = connector.get_oauth_url(state_token)
+
+    return {
+        "auth_url": auth_url,
+        "state": state_token,
+    }
+
+
+@router.post("/mercadopago/callback")
+def mercadopago_oauth_callback(
+    code: str,
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
+    db: Session = Depends(get_db),
+):
+    """Handle MercadoPago OAuth callback."""
+    store_id = store.id
+
+    try:
+        connector = MercadoPagoConnector(str(store_id))
+        token = connector.exchange_auth_code(code, connector.settings.mercadopago_redirect_uri)
+
+        encrypted_token = encrypt_secret(token.access_token)
+        encrypted_refresh = encrypt_secret(token.refresh_token) if token.refresh_token else None
+
+        existing = db.query(StoreCredential).filter_by(
+            store_id=store_id,
+            provider="mercadopago",
+        ).first()
+
+        if existing:
+            existing.access_token = encrypted_token
+            existing.refresh_token = encrypted_refresh
+            existing.expires_at = token.expires_at
+            existing.provider_account_id = connector.seller_id
+        else:
+            credential = StoreCredential(
+                id=uuid4(),
+                store_id=store_id,
+                provider="mercadopago",
+                access_token=encrypted_token,
+                refresh_token=encrypted_refresh,
+                expires_at=token.expires_at,
+                provider_account_id=connector.seller_id,
+            )
+            db.add(credential)
+
+        db.commit()
+        _upsert_connector_status(db, store_id, "mercadopago", success=True)
+
+        return {
+            "status": "success",
+            "message": f"Store {store.name} connected to MercadoPago",
+        }
+    except Exception as e:
+        _upsert_connector_status(db, store_id, "mercadopago", success=False, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to authenticate with MercadoPago: {str(e)}",
+        )
+
+
+@router.post("/mercadopago/sync-ad-spend")
+def sync_mercadopago_ad_spend(
+    start_date: datetime = Query(...),
+    end_date: datetime = Query(...),
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
+    db: Session = Depends(get_db),
+):
+    """Sync ad spend data from MercadoPago."""
+    store_id = store.id
+
+    # Get MercadoPago credentials
+    credential = db.query(StoreCredential).filter_by(
+        store_id=store_id,
+        provider="mercadopago",
+    ).first()
+
+    if not credential:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MercadoPago credentials not configured for this store",
+        )
+
+    try:
+        access_token = decrypt_secret(credential.access_token)
+
+        # Check if token is expired and refresh if needed
+        if credential.expires_at and datetime.utcnow() > credential.expires_at:
+            refresh_token = decrypt_secret(credential.refresh_token) if credential.refresh_token else None
+            if refresh_token:
+                try:
+                    connector = MercadoPagoConnector(str(store_id), credential.provider_account_id)
+                    new_token = connector.refresh_access_token(refresh_token)
+                    access_token = new_token.access_token
+                    credential.access_token = encrypt_secret(access_token)
+                    credential.refresh_token = encrypt_secret(new_token.refresh_token) if new_token.refresh_token else None
+                    credential.expires_at = new_token.expires_at
+                    db.commit()
+                    db.add(TokenRefreshAudit(id=uuid4(), store_id=store_id, provider="mercadopago", success=True))
+                    db.commit()
+                except Exception as refresh_error:
+                    db.add(TokenRefreshAudit(
+                        id=uuid4(), store_id=store_id, provider="mercadopago",
+                        success=False, error_message=str(refresh_error),
+                    ))
+                    db.commit()
+                    raise
+
+        connector = MercadoPagoConnector(str(store_id), credential.provider_account_id)
+        spend_records = connector.fetch_ad_spend(access_token, start_date, end_date)
+
+        # Ingest into ad_spend table
+        from app.models import ad_spend as ad_spend_table
+
+        rows = [{"store_id": store_id, **record} for record in spend_records]
+        if rows:
+            db.execute(insert(ad_spend_table), rows)
+            db.commit()
+
+        _upsert_connector_status(db, store_id, "mercadopago", synced=True, success=True)
+
+        return {
+            "status": "success",
+            "records_synced": len(rows),
+        }
+    except Exception as e:
+        _upsert_connector_status(db, store_id, "mercadopago", synced=True, success=False, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to sync MercadoPago ad spend: {str(e)}",
         )
 
 

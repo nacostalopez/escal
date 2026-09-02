@@ -246,6 +246,63 @@ curl -X POST http://localhost:8000/connectors/google/sync-ad-spend \
 - Spend in micros (converted to currency)
 - Stored in `ad_spend` table with `platform="google"`
 
+#### 4. Tiendanube Connector (`app/connectors/tiendanube.py`)
+
+**OAuth Flow:**
+```
+User → /connectors/tiendanube/auth-url?store_id=xxx
+  ↓
+/connectors/tiendanube/callback (with Tiendanube's auth code)
+  ↓
+Token + Tiendanube's own store id (provider_account_id) stored in store_credentials
+```
+
+**Webhook Support:**
+- Event: `order/created` and `order/updated`
+- Signature validation: HMAC-SHA256 (base64), same shape as Shopify's
+- Data normalized and ingested into `orders` table
+
+**Usage:**
+```bash
+# Get OAuth URL
+curl -X POST http://localhost:8000/connectors/tiendanube/auth-url \
+  -H "Authorization: Bearer {token}" \
+  -d '{"store_id": "xxx"}'
+
+# Tiendanube webhook (received from Tiendanube)
+curl -X POST http://localhost:8000/connectors/tiendanube/webhook/{store_id} \
+  -H "X-Linkedstore-Hmac-Sha256: ..." \
+  -H "X-Linkedstore-Topic: order/created" \
+  -d '{...order data...}'
+```
+
+#### 5. MercadoPago Connector (`app/connectors/mercadopago.py`)
+
+**OAuth Flow:**
+```
+User → /connectors/mercadopago/auth-url?store_id=xxx
+  ↓
+/connectors/mercadopago/callback (with MercadoPago's auth code)
+  ↓
+Token stored encrypted + refresh token (~180-day rotation)
+```
+
+Modeled pull-based only, like Meta/Google — MercadoPago also supports
+payment webhooks, but ad_spend metrics are already daily-bucketed, so no
+webhook route is wired up (see the connector's module docstring).
+
+**Ad Spend Sync:**
+```bash
+curl -X POST http://localhost:8000/connectors/mercadopago/sync-ad-spend \
+  -H "Authorization: Bearer {token}" \
+  -d '{"store_id": "xxx", "start_date": "2026-01-01", "end_date": "2026-01-31"}'
+```
+
+**Data Fetched:**
+- Campaign spend by day
+- Impressions and clicks
+- Stored in `ad_spend` table with `platform="mercadopago"`
+
 ### Sync Status / Health
 
 `GET /stores/{store_id}/connectors/health` (ownership-scoped, like every
@@ -259,18 +316,24 @@ other `/stores/{id}/...` route) returns per-provider status from the
 }
 ```
 
-Every OAuth callback, ad-spend sync, and Shopify webhook call updates this —
-see `_upsert_connector_status()` in `app/routes/connectors.py`. Two related
-audit tables exist for lower-level detail: `shopify_webhooks_log` (every
-webhook received, valid or not) and `token_refresh_audit` (every Google
-token-refresh attempt) — see `db/init/006_*.sql` through `008_*.sql`.
+Every OAuth callback, ad-spend sync, and webhook call updates this — see
+`_upsert_connector_status()` in `app/routes/connectors.py`. Related audit
+tables exist for lower-level detail: `shopify_webhooks_log` /
+`tiendanube_webhooks_log` (every webhook received, valid or not) and
+`token_refresh_audit` (every Google/MercadoPago token-refresh attempt) — see
+`db/init/006_*.sql` through `009_*.sql`.
+
+`store_credentials.provider_account_id` (added in `db/init/009_*.sql`) holds
+a provider-side account/store identifier captured at OAuth time — Tiendanube's
+own store id, MercadoPago's collector id — for connectors whose API calls
+need more than just the access token. Shopify/Meta/Google leave it null.
 
 ### Adding a New Connector
 
-Tiendanube and MercadoPago are next, and should be a template exercise —
-copy the Shopify (webhook-based) or Meta/Google (pull-based) pattern and
-adjust. If it's harder than that, the pattern itself needs fixing before
-adding a fourth/fifth connector on top of it.
+Every write route above (`auth-url`, `callback`, `sync-ad-spend`) is
+ownership-scoped via the `get_owned_store` dependency, exactly like every
+other `/stores/{id}/...` route — a new connector's routes should do the same,
+not re-check `store.account_id` manually.
 
 Checklist (also enforced via `.github/pull_request_template.md`):
 
@@ -476,6 +539,7 @@ The `sync_google_ad_spend` endpoint automatically refreshes expired tokens.
 7. ✅ Secrets rotation policy (`SECURITY.md`)
 8. ✅ First frontend (`frontend/` — plain HTML/CSS/JS, no build step)
 9. ✅ Structured (JSON) logging, API rate limiting, env-var validation, Shopify webhook e2e tests
-10. ⏳ Tiendanube connector (same pattern)
-11. ⏳ MercadoPago connector (same pattern)
-12. ⏳ Real frontend design pass (current one is functional only)
+10. ✅ Tiendanube connector (webhook-based, same pattern as Shopify)
+11. ✅ MercadoPago connector (pull-based, same pattern as Meta/Google)
+12. ✅ Multi-user accounts / Owner-Admin-Viewer role-based permissions
+13. ⏳ Real frontend design pass (current one is functional only)

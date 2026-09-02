@@ -26,4 +26,5 @@ class UserOut(BaseModel):
     id: UUID
     account_id: UUID
     email: str
+    role: str
     created_at: datetime | None = None

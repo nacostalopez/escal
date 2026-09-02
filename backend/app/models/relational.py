@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -17,18 +17,42 @@ class Account(Base):
 
     stores = relationship("Store", back_populates="account", cascade="all, delete-orphan")
     users = relationship("User", back_populates="account", cascade="all, delete-orphan")
+    invites = relationship("AccountInvite", back_populates="account", cascade="all, delete-orphan")
 
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (CheckConstraint("role IN ('owner', 'admin', 'viewer')", name="ck_users_role"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"))
     email = Column(String(255), unique=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
+    role = Column(String(20), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     account = relationship("Account", back_populates="users")
+
+
+class AccountInvite(Base):
+    __tablename__ = "account_invites"
+    __table_args__ = (
+        CheckConstraint("role IN ('owner', 'admin', 'viewer')", name="ck_account_invites_role"),
+        CheckConstraint("status IN ('pending', 'accepted', 'revoked')", name="ck_account_invites_status"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    email = Column(String(255), nullable=False)
+    role = Column(String(20), nullable=False)
+    invited_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    token_hash = Column(String(64), unique=True, nullable=False)
+    status = Column(String(20), nullable=False, default="pending")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    accepted_at = Column(DateTime(timezone=True))
+
+    account = relationship("Account", back_populates="invites")
 
 
 class Store(Base):
@@ -57,6 +81,11 @@ class StoreCredential(Base):
     access_token = Column(String, nullable=False)
     refresh_token = Column(String)
     expires_at = Column(DateTime(timezone=True))
+    # Provider-side account/store identifier captured at OAuth time (e.g.
+    # Tiendanube's own store id, MercadoPago's collector id), so later API
+    # calls don't require the caller to keep re-supplying it. Nullable —
+    # Shopify/Meta/Google don't use it.
+    provider_account_id = Column(String(255))
 
     store = relationship("Store", back_populates="credentials")
 

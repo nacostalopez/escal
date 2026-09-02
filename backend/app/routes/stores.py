@@ -3,7 +3,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_owned_store
+from app.dependencies import get_current_user, get_owned_store, require_role
 from app.models import Store, StoreCredential, User
 from app.schemas.stores import StoreCreate, StoreCredentialCreate, StoreCredentialOut, StoreOut
 from app.security import encrypt_secret
@@ -12,7 +12,11 @@ router = APIRouter(prefix="/stores", tags=["stores"])
 
 
 @router.post("", response_model=StoreOut, status_code=201)
-def create_store(payload: StoreCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_store(
+    payload: StoreCreate,
+    current_user: User = Depends(require_role("owner", "admin")),
+    db: Session = Depends(get_db),
+):
     store = Store(account_id=current_user.account_id, **payload.model_dump())
     db.add(store)
     db.commit()
@@ -39,6 +43,7 @@ def get_store(store: Store = Depends(get_owned_store)):
 def upsert_credentials(
     payload: StoreCredentialCreate,
     store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     data = payload.model_dump()

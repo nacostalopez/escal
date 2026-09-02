@@ -40,9 +40,17 @@ python scripts/seed_demo.py
 
 ## Auth
 
-Every endpoint except `POST /auth/register` and `POST /auth/login` requires a
-JWT bearer token. An account is created implicitly on register — one user
-owns one account for now (team members/multi-user accounts are a later step).
+Every endpoint except `POST /auth/register`, `POST /auth/login`, and
+`POST /accounts/invites/accept` requires a JWT bearer token. Accounts support
+multiple users, each with one of three roles:
+
+- **owner** — full access, plus inviting/removing members and changing roles
+- **admin** — can read and write stores/products/orders/connectors, but can't manage members
+- **viewer** — read-only
+
+Registering creates a brand-new account with the registering user as its
+`owner`. Additional members join via an invite, never via `/auth/register`
+again (an email can only belong to one account):
 
 ```bash
 curl -X POST localhost:8000/auth/register \
@@ -51,7 +59,25 @@ curl -X POST localhost:8000/auth/register \
 # => {"access_token": "...", "token_type": "bearer"}
 
 curl localhost:8000/stores -H "Authorization: Bearer <access_token>"
+
+# Owner invites a teammate:
+curl -X POST localhost:8000/accounts/invites \
+  -H "Authorization: Bearer <owner_access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "teammate@example.com", "role": "viewer"}'
+# => {"id": "...", "token": "...", ...}  — token is only ever shown here
+
+# Invitee accepts (no auth required — they have no account yet):
+curl -X POST localhost:8000/accounts/invites/accept \
+  -H "Content-Type: application/json" \
+  -d '{"token": "<token from above>", "password": "at-least-8-chars"}'
+# => {"access_token": "...", "token_type": "bearer"}
 ```
+
+Role is read fresh from the database on every request (not baked into the
+JWT), so a role change or member removal takes effect immediately — JWTs are
+long-lived (7 days) with no revocation, so trusting a stale claim would leave
+a demoted/removed user with old permissions for up to a week.
 
 Every `/stores/{id}/...` route checks that the store belongs to the caller's
 account (404, not 403, on mismatch — no confirming another account's store
@@ -64,7 +90,10 @@ beyond local dev — see `.env.example`.
 ## API overview
 
 - `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
-- `GET /accounts/me`
+- `GET /accounts/me`, `GET /accounts/members`
+- `POST /accounts/invites`, `GET /accounts/invites`, `DELETE /accounts/invites/{id}`,
+  `POST /accounts/invites/accept` — owner-only except accept
+- `PATCH /accounts/members/{id}/role`, `DELETE /accounts/members/{id}` — owner-only
 - `POST /stores`, `GET /stores`, `GET /stores/{id}`,
   `PUT /stores/{id}/credentials` (OAuth tokens per provider, encrypted at rest)
 - `PUT /stores/{id}/products` (bulk upsert by `external_id`, carries COGS/shipping cost)
@@ -76,8 +105,9 @@ beyond local dev — see `.env.example`.
 - `GET /stores/{id}/metrics/daily?start=&end=` — daily breakdown via the
   `daily_financial_summary` continuous aggregate (fast, but can lag up to ~1h
   behind since it refreshes on an hourly policy — see `db/init/004_continuous_aggregates.sql`)
-- `GET/POST /connectors/{shopify,meta,google}/...` — OAuth handshake, ad-spend
-  sync, and (Shopify) order webhook per provider — see `DEVELOPMENT.md`
+- `GET/POST /connectors/{shopify,meta,google,tiendanube,mercadopago}/...` —
+  OAuth handshake, ad-spend sync, and (Shopify/Tiendanube) order webhook per
+  provider — see `DEVELOPMENT.md`
 - `GET /stores/{id}/connectors/health` — per-provider sync status
 
 All requests are logged as structured JSON (see `DEVELOPMENT.md`) and rate
@@ -86,12 +116,15 @@ exceeding a limit returns `429`.
 
 ## Status / next steps
 
-Schema, ingestion, profit/ROAS math, auth/credential-encryption, Shopify/Meta/Google
-connectors, CI, a first frontend, structured logging, rate limiting, env-var
-validation, and Shopify webhook e2e tests are done. Not yet built:
+Schema, ingestion, profit/ROAS math, auth/credential-encryption,
+Shopify/Meta/Google/Tiendanube/MercadoPago connectors, CI, a first frontend,
+structured logging, rate limiting, env-var validation, webhook e2e tests, and
+multi-user accounts with Owner/Admin/Viewer roles are done. Not yet built:
 
-- Tiendanube and MercadoPago connectors (same pattern as the existing three)
-- Multi-user accounts / role-based permissions (currently one user = one account)
 - Refresh tokens (JWTs are long-lived, 7 days, with no revocation yet)
+- Invite emails aren't sent — `POST /accounts/invites` returns the raw token
+  in the response for the frontend to surface/copy; wiring real email
+  delivery is a separate task
 - The frontend is intentionally minimal (`frontend/`, no build step) — fine
-  for seeing real numbers locally, not meant as a finished product design
+  for seeing real numbers locally, not meant as a finished product design,
+  and doesn't yet have UI for the member/invite management routes above

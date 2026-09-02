@@ -21,7 +21,12 @@ def register(request: Request, payload: RegisterIn, db: Session = Depends(get_db
     db.add(account)
     db.flush()
 
-    user = User(account_id=account.id, email=payload.email, hashed_password=hash_password(payload.password))
+    user = User(
+        account_id=account.id,
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+        role="owner",
+    )
     db.add(user)
     db.commit()
     db.refresh(user)

@@ -31,3 +31,20 @@ def get_owned_store(
     if not store or store.account_id != current_user.account_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
     return store
+
+
+def require_role(*allowed_roles: str):
+    """Gate a route to specific roles, e.g. Depends(require_role("owner", "admin")).
+
+    Reads role straight off the User row get_current_user already fetches —
+    no extra query. Deliberately not read from the JWT: tokens are long-lived
+    (7 days) with no revocation, so trusting a baked-in role claim would let
+    a demoted/removed user keep old permissions for up to a week. Re-checking
+    against the DB on every request means a role change takes effect on the
+    next request instead.
+    """
+    def _check(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        return current_user
+    return _check

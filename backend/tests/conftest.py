@@ -104,12 +104,46 @@ def test_account(test_db_session):
 
 @pytest.fixture
 def test_user(test_db_session, test_account):
-    """Create a test user."""
+    """Create a test user (owner of test_account — every existing test
+    implicitly assumes full read/write access)."""
     user = User(
         id=uuid4(),
         account_id=test_account.id,
         email="testuser@example.com",
         hashed_password=hash_password("testpassword123"),
+        role="owner",
+    )
+    test_db_session.add(user)
+    test_db_session.commit()
+    test_db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def admin_user(test_db_session, test_account):
+    """An admin-role user in the same account as test_user."""
+    user = User(
+        id=uuid4(),
+        account_id=test_account.id,
+        email="admin@example.com",
+        hashed_password=hash_password("adminpassword123"),
+        role="admin",
+    )
+    test_db_session.add(user)
+    test_db_session.commit()
+    test_db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def viewer_user(test_db_session, test_account):
+    """A viewer-role user in the same account as test_user."""
+    user = User(
+        id=uuid4(),
+        account_id=test_account.id,
+        email="viewer@example.com",
+        hashed_password=hash_password("viewerpassword123"),
+        role="viewer",
     )
     test_db_session.add(user)
     test_db_session.commit()
@@ -162,12 +196,13 @@ def other_account(test_db_session):
 
 @pytest.fixture
 def other_user(test_db_session, other_account):
-    """Create a user in a different account."""
+    """Create a user in a different account (owner of other_account)."""
     user = User(
         id=uuid4(),
         account_id=other_account.id,
         email="otheruser@example.com",
         hashed_password=hash_password("otherpassword123"),
+        role="owner",
     )
     test_db_session.add(user)
     test_db_session.commit()
@@ -181,6 +216,28 @@ def auth_header(client, test_user):
     response = client.post(
         "/auth/login",
         json={"email": "testuser@example.com", "password": "testpassword123"},
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def admin_auth_header(client, admin_user):
+    """Create an authentication header for admin_user."""
+    response = client.post(
+        "/auth/login",
+        json={"email": "admin@example.com", "password": "adminpassword123"},
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def viewer_auth_header(client, viewer_user):
+    """Create an authentication header for viewer_user."""
+    response = client.post(
+        "/auth/login",
+        json={"email": "viewer@example.com", "password": "viewerpassword123"},
     )
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

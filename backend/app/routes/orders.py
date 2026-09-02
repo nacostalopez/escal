@@ -6,8 +6,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_owned_store
-from app.models import Store
+from app.dependencies import get_owned_store, require_role
+from app.models import Store, User
 from app.models import orders as orders_table
 from app.schemas.orders import OrderCreate, OrderOut
 
@@ -15,7 +15,12 @@ router = APIRouter(prefix="/stores/{store_id}/orders", tags=["orders"])
 
 
 @router.post("", status_code=201)
-def ingest_orders(payload: list[OrderCreate], store: Store = Depends(get_owned_store), db: Session = Depends(get_db)):
+def ingest_orders(
+    payload: list[OrderCreate],
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
+    db: Session = Depends(get_db),
+):
     if not payload:
         return {"inserted": 0}
 

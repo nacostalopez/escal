@@ -19,6 +19,18 @@ class ShopifyWebhookLog(Base):
     received_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class TiendanubeWebhookLog(Base):
+    __tablename__ = "tiendanube_webhooks_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id = Column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"))
+    topic = Column(String(100), nullable=False)
+    signature_valid = Column(Boolean, nullable=False)
+    status = Column(String(20), nullable=False)  # 'processed', 'rejected', 'error'
+    error_message = Column(Text)
+    received_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class TokenRefreshAudit(Base):
     __tablename__ = "token_refresh_audit"
 

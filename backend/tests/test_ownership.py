@@ -136,6 +136,50 @@ class TestOwnershipScoping:
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "Store not found" in response.json()["detail"]
 
+    def test_connector_auth_url_ownership_check(self, client, other_account, auth_header, test_db_session):
+        """Connector OAuth routes must go through the same ownership check as data routes."""
+        from app.models import Store
+
+        other_store = Store(
+            id=uuid4(),
+            account_id=other_account.id,
+            name="Other Account Store",
+            platform="shopify",
+        )
+        test_db_session.add(other_store)
+        test_db_session.commit()
+
+        response = client.post(
+            "/connectors/shopify/auth-url",
+            headers=auth_header,
+            params={"store_id": str(other_store.id), "shop_domain": "other.myshopify.com"},
+        )
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert "Store not found" in response.json()["detail"]
+
+    def test_tiendanube_auth_url_ownership_check(self, client, other_account, auth_header, test_db_session):
+        """Same check applies to the new Tiendanube connector routes."""
+        from app.models import Store
+
+        other_store = Store(
+            id=uuid4(),
+            account_id=other_account.id,
+            name="Other Account Tiendanube Store",
+            platform="tiendanube",
+        )
+        test_db_session.add(other_store)
+        test_db_session.commit()
+
+        response = client.post(
+            "/connectors/tiendanube/auth-url",
+            headers=auth_header,
+            params={"store_id": str(other_store.id)},
+        )
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert "Store not found" in response.json()["detail"]
+
     def test_no_data_leak_via_error_messages(self, client, other_account, auth_header, test_db_session):
         """Test that error messages don't leak information about other accounts."""
         from app.models import Store
