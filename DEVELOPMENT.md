@@ -385,6 +385,51 @@ regex parsing. `main.py`'s `log_requests` middleware logs every request
 the Shopify webhook route logs on rejection/success/failure. Set the level
 with `LOG_LEVEL` (defaults to `INFO`).
 
+### Refresh Tokens
+
+`POST /auth/register`, `POST /auth/login`, and `POST /accounts/invites/accept`
+all return `{access_token, refresh_token}`. Access tokens are JWTs
+(`ACCESS_TOKEN_EXPIRE_MINUTES`, default 15 min); refresh tokens are opaque
+random values (`secrets.token_urlsafe(32)`) — only their SHA-256 hash is
+persisted (`refresh_tokens.token_hash`, via `app/security.py::hash_token`,
+the same helper `account_invites` uses), so a raw refresh token is only ever
+visible in the response that issued it.
+
+- `POST /auth/refresh` **rotates**: the presented token is looked up, checked
+  for `revoked_at IS NULL` and not expired, then immediately revoked and
+  replaced with a new access/refresh pair. Reusing an already-rotated token
+  401s. There's no reuse-detection beyond that single check (e.g. no
+  "revoke the whole token family if a rotated-out token is replayed") — a
+  reasonable next hardening step if this ever needs to detect token theft,
+  not something the current scale needs.
+- `POST /auth/logout` revokes one refresh token (its owner must match the
+  caller's `current_user.id`, else 404 — same no-leak pattern as
+  `get_owned_store`). There's no "logout everywhere" endpoint yet, but
+  `routes/accounts.py::remove_member` bulk-revokes every active refresh
+  token for a removed member before deleting their `User` row.
+- Role changes and member removal don't need any refresh-token-specific
+  handling to take effect immediately: `require_role()` already re-reads
+  `role` from the DB on every request rather than trusting a JWT claim, so a
+  refresh token only ever mints a *new* access token honoring whatever the
+  role is *right now*.
+
+### Email
+
+`app/email.py::send_email()` sends plain-text mail over SMTP
+(`smtplib`/`email.message`, stdlib only — no new dependency). Configured via
+`SMTP_HOST`/`PORT`/`USERNAME`/`PASSWORD`/`FROM_EMAIL`/`USE_TLS` — works with
+Gmail, SendGrid/Mailgun/SES's SMTP endpoints, or any other SMTP server. With
+`SMTP_HOST` unset (the default, and always true in tests/CI) it logs the
+email at `INFO` instead of connecting anywhere, so nothing here needs real
+credentials for local dev. `routes/accounts.py::create_invite` is the only
+caller today — it emails the invitee an accept link
+(`{FRONTEND_URL}/index.html?invite_token=...`) and the raw token, and
+still returns the raw token in the API response too as a fallback (the
+frontend has no page reading that query param yet). A send failure is
+caught and logged, never raised — invite creation must not fail just because
+SMTP is unreachable, since the token in the response is still a usable
+fallback.
+
 ### Rate Limiting
 
 `app/rate_limit.py` defines a shared `slowapi` `Limiter` keyed by client IP,

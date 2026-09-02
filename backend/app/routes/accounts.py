@@ -1,4 +1,4 @@
-import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
@@ -6,9 +6,12 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user, require_role
-from app.models import AccountInvite, User
+from app.email import send_email
+from app.models import AccountInvite, RefreshToken, User
+from app.routes.auth import issue_tokens
 from app.schemas.accounts import (
     AccountOut,
     InviteAcceptIn,
@@ -18,9 +21,10 @@ from app.schemas.accounts import (
     RoleUpdateIn,
 )
 from app.schemas.auth import TokenOut
-from app.security import create_access_token, hash_password
+from app.security import hash_password, hash_token
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
+logger = logging.getLogger("escal.accounts")
 
 INVITE_EXPIRY_DAYS = 7
 
@@ -61,7 +65,6 @@ def create_invite(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An invite to this email is already pending")
 
     raw_token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
     invite = AccountInvite(
         id=uuid4(),
@@ -69,12 +72,28 @@ def create_invite(
         email=payload.email,
         role=payload.role,
         invited_by=current_user.id,
-        token_hash=token_hash,
+        token_hash=hash_token(raw_token),
         expires_at=datetime.now(timezone.utc) + timedelta(days=INVITE_EXPIRY_DAYS),
     )
     db.add(invite)
     db.commit()
     db.refresh(invite)
+
+    invite_url = f"{settings.frontend_url}/index.html?invite_token={raw_token}"
+    try:
+        send_email(
+            to=payload.email,
+            subject=f"You've been invited to {current_user.account.name} on Escal",
+            body=(
+                f"{current_user.email} invited you to join {current_user.account.name} "
+                f"on Escal as {payload.role}.\n\n"
+                f"Accept your invite: {invite_url}\n\n"
+                f"Or use this token directly: {raw_token}\n\n"
+                f"This invite expires in {INVITE_EXPIRY_DAYS} days."
+            ),
+        )
+    except Exception:
+        logger.exception("invite_email_send_failed", extra={"invite_id": str(invite.id), "email": payload.email})
 
     result = InviteOut.model_validate(invite)
     result.token = raw_token
@@ -110,8 +129,7 @@ def revoke_invite(
 
 @router.post("/invites/accept", response_model=TokenOut)
 def accept_invite(payload: InviteAcceptIn, db: Session = Depends(get_db)):
-    token_hash = hashlib.sha256(payload.token.encode()).hexdigest()
-    invite = db.query(AccountInvite).filter_by(token_hash=token_hash).first()
+    invite = db.query(AccountInvite).filter_by(token_hash=hash_token(payload.token)).first()
 
     now = datetime.now(timezone.utc)
     if not invite or invite.status != "pending" or invite.expires_at < now:
@@ -135,7 +153,7 @@ def accept_invite(payload: InviteAcceptIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    return TokenOut(access_token=create_access_token(user.id, user.account_id))
+    return issue_tokens(db, user)
 
 
 @router.patch("/members/{user_id}/role", response_model=MemberOut)
@@ -181,6 +199,10 @@ def remove_member(
         ).count()
         if remaining_owners == 0:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot remove the last owner")
+
+    db.query(RefreshToken).filter(
+        RefreshToken.user_id == member.id, RefreshToken.revoked_at.is_(None),
+    ).update({"revoked_at": datetime.now(timezone.utc)})
 
     db.delete(member)
     db.commit()

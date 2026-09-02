@@ -56,28 +56,52 @@ again (an email can only belong to one account):
 curl -X POST localhost:8000/auth/register \
   -H "Content-Type: application/json" \
   -d '{"account_name": "My Store", "email": "me@example.com", "password": "at-least-8-chars"}'
-# => {"access_token": "...", "token_type": "bearer"}
+# => {"access_token": "...", "refresh_token": "...", "token_type": "bearer"}
 
 curl localhost:8000/stores -H "Authorization: Bearer <access_token>"
 
-# Owner invites a teammate:
+# Owner invites a teammate — this also emails them an accept link (see
+# "Email" below; with no SMTP configured it just logs instead of sending):
 curl -X POST localhost:8000/accounts/invites \
   -H "Authorization: Bearer <owner_access_token>" \
   -H "Content-Type: application/json" \
   -d '{"email": "teammate@example.com", "role": "viewer"}'
-# => {"id": "...", "token": "...", ...}  — token is only ever shown here
+# => {"id": "...", "token": "...", ...}  — token is only ever shown here (fallback if email delivery fails)
 
 # Invitee accepts (no auth required — they have no account yet):
 curl -X POST localhost:8000/accounts/invites/accept \
   -H "Content-Type: application/json" \
   -d '{"token": "<token from above>", "password": "at-least-8-chars"}'
-# => {"access_token": "...", "token_type": "bearer"}
+# => {"access_token": "...", "refresh_token": "...", "token_type": "bearer"}
 ```
 
 Role is read fresh from the database on every request (not baked into the
-JWT), so a role change or member removal takes effect immediately — JWTs are
-long-lived (7 days) with no revocation, so trusting a stale claim would leave
-a demoted/removed user with old permissions for up to a week.
+JWT), so a role change or member removal takes effect on the very next
+request rather than waiting out the access token's lifetime.
+
+### Refresh tokens
+
+Access tokens are short-lived (`ACCESS_TOKEN_EXPIRE_MINUTES`, default 15
+min); a separate opaque refresh token (`REFRESH_TOKEN_EXPIRE_DAYS`, default
+30 days) is issued alongside it by every endpoint above and persisted
+(hashed, like invite tokens) in `refresh_tokens`:
+
+```bash
+curl -X POST localhost:8000/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token": "<refresh_token>"}'
+# => new {"access_token": "...", "refresh_token": "..."} — the old refresh
+#    token is revoked in the same request (rotation), so reusing it 401s
+
+curl -X POST localhost:8000/auth/logout \
+  -H "Authorization: Bearer <access_token>" -H "Content-Type: application/json" \
+  -d '{"refresh_token": "<refresh_token>"}'
+# revokes just that one refresh token (this device/session)
+```
+
+**Known gap in this repo right now**: the frontend (`frontend/`) only stores
+`access_token` and never calls `/auth/refresh` — until that's wired up,
+users of the frontend will be prompted to log in again every 15 minutes.
 
 Every `/stores/{id}/...` route checks that the store belongs to the caller's
 account (404, not 403, on mismatch — no confirming another account's store
@@ -90,6 +114,7 @@ beyond local dev — see `.env.example`.
 ## API overview
 
 - `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
+- `POST /auth/refresh` (rotates a refresh token), `POST /auth/logout` (revokes one)
 - `GET /accounts/me`, `GET /accounts/members`
 - `POST /accounts/invites`, `GET /accounts/invites`, `DELETE /accounts/invites/{id}`,
   `POST /accounts/invites/accept` — owner-only except accept
@@ -118,13 +143,17 @@ exceeding a limit returns `429`.
 
 Schema, ingestion, profit/ROAS math, auth/credential-encryption,
 Shopify/Meta/Google/Tiendanube/MercadoPago connectors, CI, a first frontend,
-structured logging, rate limiting, env-var validation, webhook e2e tests, and
-multi-user accounts with Owner/Admin/Viewer roles are done. Not yet built:
+structured logging, rate limiting, env-var validation, webhook e2e tests,
+multi-user accounts with Owner/Admin/Viewer roles, revocable refresh tokens,
+and invite emails (via SMTP, configurable through env vars) are done. Not
+yet built:
 
-- Refresh tokens (JWTs are long-lived, 7 days, with no revocation yet)
-- Invite emails aren't sent — `POST /accounts/invites` returns the raw token
-  in the response for the frontend to surface/copy; wiring real email
-  delivery is a separate task
+- The frontend still only stores `access_token` and never calls
+  `/auth/refresh` — since access tokens are now short-lived (15 min
+  default), the frontend will need that wiring before this stops being a
+  UX regression there
 - The frontend is intentionally minimal (`frontend/`, no build step) — fine
   for seeing real numbers locally, not meant as a finished product design,
-  and doesn't yet have UI for the member/invite management routes above
+  and doesn't yet have UI for the member/invite management routes above (an
+  invite email's link points at `{FRONTEND_URL}/index.html?invite_token=...`,
+  which the current frontend doesn't read yet)

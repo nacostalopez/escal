@@ -15,7 +15,11 @@ class Settings(BaseSettings):
 
     jwt_secret: str = "dev-only-secret-change-me"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 30
+
+    # Used to build links in outgoing emails (e.g. invite links).
+    frontend_url: str = "http://localhost:3000"
 
     # Fernet key for encrypting store_credentials at rest. Dev-only default —
     # generate a real one with:

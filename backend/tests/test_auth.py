@@ -21,6 +21,7 @@ class TestRegister:
         assert response.status_code == status.HTTP_201_CREATED
         data = response.json()
         assert "access_token" in data
+        assert "refresh_token" in data
         assert data["token_type"] == "bearer"
 
     def test_register_duplicate_email(self, client, test_user):
@@ -65,6 +66,7 @@ class TestLogin:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert "access_token" in data
+        assert "refresh_token" in data
         assert data["token_type"] == "bearer"
 
     def test_login_wrong_password(self, client, test_user):
