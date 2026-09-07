@@ -11,6 +11,24 @@ const state = {
 };
 
 // ---------------------------------------------------------------------------
+// Theme (light/dark)
+// ---------------------------------------------------------------------------
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("aramal_theme", theme);
+}
+
+applyTheme(localStorage.getItem("aramal_theme") || "light");
+
+document.getElementById("theme-toggle").addEventListener("click", () => {
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  // The chart bakes theme colors into static SVG markup at render time, so
+  // a toggle after the fact needs an explicit re-render to pick them up.
+  if (state.lastDaily) renderChart(state.lastDaily);
+});
+
+// ---------------------------------------------------------------------------
 // API helper
 // ---------------------------------------------------------------------------
 
@@ -270,6 +288,7 @@ async function refreshMetrics() {
   document.getElementById("stat-roas").textContent =
     summary.true_roas === null || summary.true_roas === undefined ? "—" : `${summary.true_roas}x`;
 
+  state.lastDaily = daily;
   renderChart(daily);
 }
 
@@ -279,6 +298,15 @@ function renderChart(daily) {
     container.innerHTML = '<div class="chart-empty">No daily data in this range yet.</div>';
     return;
   }
+
+  // Read the live theme tokens instead of hardcoding hex — light/dark swap
+  // --chart-spend (navy blends into the dark panel bg, so dark mode needs
+  // celeste there instead) and this keeps both in sync with style.css.
+  const styles = getComputedStyle(document.documentElement);
+  const colorRevenue = styles.getPropertyValue("--primary").trim();
+  const colorSpend = styles.getPropertyValue("--chart-spend").trim();
+  const colorAxis = styles.getPropertyValue("--border").trim();
+  const colorText = styles.getPropertyValue("--muted").trim();
 
   const width = 720;
   const height = 220;
@@ -295,22 +323,22 @@ function renderChart(daily) {
     const groupX = padding + i * barGroupWidth;
     const revY = scale(d.total_revenue);
     const spendY = scale(d.ad_spend);
-    bars += `<rect x="${groupX}" y="${revY}" width="${barWidth}" height="${(height - padding) - revY}" fill="#2263A2" rx="2"></rect>`;
-    bars += `<rect x="${groupX + barWidth + 3}" y="${spendY}" width="${barWidth}" height="${(height - padding) - spendY}" fill="#1A2B4A" rx="2"></rect>`;
+    bars += `<rect x="${groupX}" y="${revY}" width="${barWidth}" height="${(height - padding) - revY}" fill="${colorRevenue}" rx="2"></rect>`;
+    bars += `<rect x="${groupX + barWidth + 3}" y="${spendY}" width="${barWidth}" height="${(height - padding) - spendY}" fill="${colorSpend}" rx="2"></rect>`;
     if (i % Math.ceil(daily.length / 8 || 1) === 0) {
-      labels += `<text x="${groupX}" y="${height - 8}" font-size="10" fill="#5c6987">${String(d.day).slice(5)}</text>`;
+      labels += `<text x="${groupX}" y="${height - 8}" font-size="10" fill="${colorText}">${String(d.day).slice(5)}</text>`;
     }
   });
 
   container.innerHTML = `
     <svg viewBox="0 0 ${width} ${height}">
-      <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#dbe3ee"></line>
+      <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="${colorAxis}"></line>
       ${bars}
       ${labels}
     </svg>
-    <div style="display:flex;gap:16px;font-size:12px;color:#5c6987;margin-top:6px;">
-      <span><span style="display:inline-block;width:9px;height:9px;background:#2263A2;border-radius:2px;margin-right:4px;"></span>Revenue</span>
-      <span><span style="display:inline-block;width:9px;height:9px;background:#1A2B4A;border-radius:2px;margin-right:4px;"></span>Ad spend</span>
+    <div style="display:flex;gap:16px;font-size:12px;color:${colorText};margin-top:6px;">
+      <span><span style="display:inline-block;width:9px;height:9px;background:${colorRevenue};border-radius:2px;margin-right:4px;"></span>Revenue</span>
+      <span><span style="display:inline-block;width:9px;height:9px;background:${colorSpend};border-radius:2px;margin-right:4px;"></span>Ad spend</span>
     </div>
   `;
 }

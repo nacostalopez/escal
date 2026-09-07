@@ -15,8 +15,43 @@
   --celeste: #7DB8D9;
   --navy: #1A2B4A;
   --tinta: #0C1730;
+  --chart-spend: #1A2B4A;
   --radius: 10px;
 }
+
+/* Dark mode — Tinta profunda como base, no un gris genérico invertido. */
+:root[data-theme="dark"] {
+  --bg: #0C1730;
+  --panel: #11203f;
+  --border: #223354;
+  --text: #EEF2F8;
+  --muted: #8593b3;
+  --primary: #2263A2;
+  --primary-dark: #2d7bc4;
+  --highlight: rgba(125, 184, 217, 0.14);
+  --chart-spend: #7DB8D9;
+}
+:root[data-theme="dark"] .connector-dot.none { background: #445070; }
+:root[data-theme="dark"] .auth-tab.active { box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+
+/* Textura de fondo (flujo/nodos) — fija detrás de todo, solo visible en
+   dark mode, para que los espacios vacíos entre paneles no queden en
+   negro liso. */
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.app-bg svg { width: 100%; height: 100%; }
+:root[data-theme="dark"] .app-bg { opacity: 1; }
+
+.theme-toggle { display: flex; align-items: center; justify-content: center; padding: 8px; }
+.theme-toggle .icon-moon { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-moon { display: block; }
 
 * { box-sizing: border-box; }
 
@@ -31,6 +66,7 @@ body {
   font-family: "DM Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 a { color: var(--primary); text-decoration: none; }
@@ -55,6 +91,8 @@ a:hover { text-decoration: underline; }
   font-size: 18px;
   letter-spacing: -0.02em;
 }
+
+.topbar-right { display: flex; align-items: center; gap: 10px; }
 
 .topbar-account {
   display: flex;
@@ -184,6 +222,7 @@ a:hover { text-decoration: underline; }
   padding: 9px 10px;
   border: 1px solid var(--border);
   border-radius: 7px;
+  background: var(--panel);
   color: var(--text);
 }
 .auth-form button { margin-top: 4px; }
@@ -234,6 +273,8 @@ a:hover { text-decoration: underline; }
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
   font-size: 14px;
 }
 
@@ -311,6 +352,8 @@ a:hover { text-decoration: underline; }
   padding: 9px 10px;
   border: 1px solid var(--border);
   border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
