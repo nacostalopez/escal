@@ -170,18 +170,38 @@ a:hover { text-decoration: underline; }
 .auth-formside {
   flex: 1 1 45%;
   min-width: 340px;
+  position: relative;
+  overflow: hidden;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: var(--bg);
+  gap: 24px;
+  /* A fading wash from the hero's dark tone softens the hard seam between
+     the two panels instead of an abrupt color jump. */
+  background: linear-gradient(to right, rgba(12, 23, 48, 0.4), rgba(12, 23, 48, 0) 160px), var(--bg);
 }
+.auth-formside-flow { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.7; transition: opacity 0.25s ease; }
+/* The right panel goes solid dark in dark mode (no seam to soften there),
+   so this light-mode-only texture would just read as stray streaks. */
+:root[data-theme="dark"] .auth-formside-flow { opacity: 0; }
 
 .auth-card {
+  position: relative;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 28px;
   width: 340px;
+  box-shadow: 0 12px 32px rgba(12, 23, 48, 0.08);
+}
+
+.auth-formside-footer {
+  position: relative;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
 }
 
 @media (max-width: 860px) {
