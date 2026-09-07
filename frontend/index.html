@@ -38,7 +38,7 @@
       </button>
       <div id="topbar-account" class="topbar-account" hidden>
         <span id="account-name"></span>
-        <button id="logout-btn" class="btn btn-ghost">Log out</button>
+        <button id="logout-btn" class="btn btn-ghost">Cerrar sesión</button>
       </div>
     </div>
   </header>
@@ -85,32 +85,56 @@
           <circle cx="150" cy="800" r="3.5" fill="#2263A2"/>
         </svg>
         <div class="auth-card">
+          <div id="login-heading" class="auth-card-heading">
+            <h2>Bienvenido de nuevo</h2>
+            <p>Ingresá para ver el estado real de tu negocio.</p>
+          </div>
+          <div id="register-heading" class="auth-card-heading" hidden>
+            <h2>Creá tu cuenta</h2>
+            <p>Dos minutos y empezás a ver tus datos en tiempo real.</p>
+          </div>
+
           <div class="auth-tabs">
-            <button id="tab-login" class="auth-tab active">Log in</button>
-            <button id="tab-register" class="auth-tab">Register</button>
+            <button id="tab-login" class="auth-tab active">Iniciar sesión</button>
+            <button id="tab-register" class="auth-tab">Crear cuenta</button>
           </div>
 
           <form id="login-form" class="auth-form">
             <label>Email
-              <input type="email" id="login-email" required autocomplete="username" />
+              <span class="input-wrap">
+                <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>
+                <input type="email" id="login-email" required autocomplete="username" placeholder="vos@tunegocio.com" />
+              </span>
             </label>
-            <label>Password
-              <input type="password" id="login-password" required autocomplete="current-password" />
+            <label>Contraseña
+              <span class="input-wrap">
+                <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                <input type="password" id="login-password" required autocomplete="current-password" placeholder="Tu contraseña" />
+              </span>
             </label>
-            <button type="submit" class="btn btn-primary">Log in</button>
+            <button type="submit" class="btn btn-primary">Iniciar sesión</button>
           </form>
 
           <form id="register-form" class="auth-form" hidden>
-            <label>Account name
-              <input type="text" id="register-account-name" required placeholder="My Store LLC" />
+            <label>Nombre de tu negocio
+              <span class="input-wrap">
+                <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V9l8-4 8 4v12"/><path d="M9 21v-6h6v6"/></svg>
+                <input type="text" id="register-account-name" required placeholder="Mi Negocio SRL" />
+              </span>
             </label>
             <label>Email
-              <input type="email" id="register-email" required autocomplete="username" />
+              <span class="input-wrap">
+                <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>
+                <input type="email" id="register-email" required autocomplete="username" placeholder="vos@tunegocio.com" />
+              </span>
             </label>
-            <label>Password
-              <input type="password" id="register-password" required minlength="8" autocomplete="new-password" />
+            <label>Contraseña
+              <span class="input-wrap">
+                <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                <input type="password" id="register-password" required minlength="8" autocomplete="new-password" placeholder="Mínimo 8 caracteres" />
+              </span>
             </label>
-            <button type="submit" class="btn btn-primary">Create account</button>
+            <button type="submit" class="btn btn-primary">Crear cuenta</button>
           </form>
 
           <p id="auth-error" class="error-text" hidden></p>

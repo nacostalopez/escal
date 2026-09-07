@@ -106,6 +106,8 @@ function switchAuthTab(tab) {
   document.getElementById("tab-register").classList.toggle("active", !isLogin);
   document.getElementById("login-form").hidden = !isLogin;
   document.getElementById("register-form").hidden = isLogin;
+  document.getElementById("login-heading").hidden = !isLogin;
+  document.getElementById("register-heading").hidden = isLogin;
   authError.hidden = true;
 }
 
@@ -180,7 +182,7 @@ function showLoggedOut() {
 function sessionExpired() {
   showLoggedOut();
   switchAuthTab("login");
-  showAuthError("Your session expired — please log in again.");
+  showAuthError("Tu sesión expiró — iniciá sesión de nuevo.");
 }
 
 function setTokens(accessToken, refreshToken) {

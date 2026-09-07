@@ -114,10 +114,25 @@ a:hover { text-decoration: underline; }
 }
 
 .btn-primary {
+  position: relative;
+  overflow: hidden;
   background: var(--primary);
+  /* Concentric-ring texture (the login hero's orbit motif, scaled down)
+     instead of a flat fill — gives buttons some depth. */
+  background-image: repeating-radial-gradient(circle at 88% -40%, rgba(255,255,255,0.22) 0, rgba(255,255,255,0.22) 1px, transparent 1px, transparent 9px);
   color: white;
 }
-.btn-primary:hover { background: var(--primary-dark); }
+.btn-primary::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  right: 16px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--celeste);
+}
+.btn-primary:hover { background-color: var(--primary-dark); }
 
 .btn-ghost {
   background: transparent;
@@ -210,6 +225,10 @@ a:hover { text-decoration: underline; }
   .auth-formside { flex: none; padding: 32px 0; }
 }
 
+.auth-card-heading { margin-bottom: 20px; }
+.auth-card-heading h2 { font-family: "Inter", sans-serif; font-size: 19px; margin: 0 0 4px; }
+.auth-card-heading p { margin: 0; font-size: 13px; color: var(--muted); }
+
 .auth-tabs {
   display: flex;
   gap: 4px;
@@ -237,6 +256,16 @@ a:hover { text-decoration: underline; }
 
 .auth-form { display: flex; flex-direction: column; gap: 14px; }
 .auth-form label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+.input-wrap { position: relative; display: block; }
+.input-icon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
 .auth-form input, .auth-form select {
   font-size: 14px;
   padding: 9px 10px;
@@ -245,6 +274,8 @@ a:hover { text-decoration: underline; }
   background: var(--panel);
   color: var(--text);
 }
+.auth-form .input-wrap input { width: 100%; padding-left: 34px; }
+.auth-form input::placeholder { color: var(--muted); opacity: 1; }
 .auth-form button { margin-top: 4px; }
 
 .error-text { color: var(--danger); font-size: 13px; margin-top: 14px; }
