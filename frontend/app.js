@@ -295,22 +295,22 @@ function renderChart(daily) {
     const groupX = padding + i * barGroupWidth;
     const revY = scale(d.total_revenue);
     const spendY = scale(d.ad_spend);
-    bars += `<rect x="${groupX}" y="${revY}" width="${barWidth}" height="${(height - padding) - revY}" fill="#2f6feb" rx="2"></rect>`;
-    bars += `<rect x="${groupX + barWidth + 3}" y="${spendY}" width="${barWidth}" height="${(height - padding) - spendY}" fill="#d64545" rx="2"></rect>`;
+    bars += `<rect x="${groupX}" y="${revY}" width="${barWidth}" height="${(height - padding) - revY}" fill="#2263A2" rx="2"></rect>`;
+    bars += `<rect x="${groupX + barWidth + 3}" y="${spendY}" width="${barWidth}" height="${(height - padding) - spendY}" fill="#1A2B4A" rx="2"></rect>`;
     if (i % Math.ceil(daily.length / 8 || 1) === 0) {
-      labels += `<text x="${groupX}" y="${height - 8}" font-size="10" fill="#6b7280">${String(d.day).slice(5)}</text>`;
+      labels += `<text x="${groupX}" y="${height - 8}" font-size="10" fill="#5c6987">${String(d.day).slice(5)}</text>`;
     }
   });
 
   container.innerHTML = `
     <svg viewBox="0 0 ${width} ${height}">
-      <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#e3e6ea"></line>
+      <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#dbe3ee"></line>
       ${bars}
       ${labels}
     </svg>
-    <div style="display:flex;gap:16px;font-size:12px;color:#6b7280;margin-top:6px;">
-      <span><span style="display:inline-block;width:9px;height:9px;background:#2f6feb;border-radius:2px;margin-right:4px;"></span>Revenue</span>
-      <span><span style="display:inline-block;width:9px;height:9px;background:#d64545;border-radius:2px;margin-right:4px;"></span>Ad spend</span>
+    <div style="display:flex;gap:16px;font-size:12px;color:#5c6987;margin-top:6px;">
+      <span><span style="display:inline-block;width:9px;height:9px;background:#2263A2;border-radius:2px;margin-right:4px;"></span>Revenue</span>
+      <span><span style="display:inline-block;width:9px;height:9px;background:#1A2B4A;border-radius:2px;margin-right:4px;"></span>Ad spend</span>
     </div>
   `;
 }

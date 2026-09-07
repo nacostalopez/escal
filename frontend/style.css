@@ -1,14 +1,20 @@
+/* ARAMAL brand system — see Brand Book & Design System ed. 2026 v1.0.
+   Navy = base institucional, Azul acción = acento único, Celeste = highlight
+   puntual; verde/amarillo/rojo/aqua son funcionales, nunca decorativos. */
 :root {
-  --bg: #f6f7f9;
+  --bg: #f7f9fc;
   --panel: #ffffff;
-  --border: #e3e6ea;
-  --text: #1a1d23;
-  --muted: #6b7280;
-  --primary: #2f6feb;
-  --primary-dark: #1f52b8;
-  --danger: #d64545;
-  --positive: #1a9c5e;
-  --highlight: #eef4ff;
+  --border: #dbe3ee;
+  --text: #1A2B4A;
+  --muted: #5c6987;
+  --primary: #2263A2;
+  --primary-dark: #1b4c7c;
+  --danger: #FA0715;
+  --positive: #0EB596;
+  --highlight: #eaf1f8;
+  --celeste: #7DB8D9;
+  --navy: #1A2B4A;
+  --tinta: #0C1730;
   --radius: 10px;
 }
 
@@ -22,9 +28,14 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: "DM Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
+}
+
+/* Inter for titulares, display y datos; DM Sans (body, arriba) para todo lo demás. */
+.brand, h2, .stat-value, .stat-label, .store-name {
+  font-family: "Inter", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
 }
 
 .topbar {
@@ -191,7 +202,7 @@ body {
   flex-direction: column;
   gap: 6px;
 }
-.stat-card-highlight { background: var(--highlight); border-color: #c9dcfb; }
+.stat-card-highlight { background: var(--highlight); border-color: var(--celeste); }
 
 .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
 .stat-value { font-size: 22px; font-weight: 700; }

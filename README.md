@@ -1,4 +1,4 @@
-# Escal
+# ARAMAL
 
 E-commerce analytics backend (Triple Whale / Scalify style) — True ROAS, net profit,
 and ad spend consolidation across stores. Standalone project, independent of any
