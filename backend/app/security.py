@@ -40,6 +40,12 @@ def create_refresh_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def create_oauth_state_token() -> str:
+    """Generate a new opaque OAuth CSRF state token (raw value — caller
+    persists its hash_token() result plus an expiry as an OAuthState row)."""
+    return secrets.token_urlsafe(32)
+
+
 def decode_access_token(token: str) -> dict:
     try:
         return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])

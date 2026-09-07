@@ -1,7 +1,7 @@
 """Connector routes for OAuth handshakes, webhooks, and sync-status reporting."""
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -19,6 +19,7 @@ from app.database import get_db
 from app.dependencies import get_owned_store, require_role
 from app.models import (
     ConnectorStatus,
+    OAuthState,
     ShopifyWebhookLog,
     Store,
     StoreCredential,
@@ -27,7 +28,7 @@ from app.models import (
     User,
 )
 from app.rate_limit import limiter
-from app.security import decrypt_secret, encrypt_secret
+from app.security import create_oauth_state_token, decrypt_secret, encrypt_secret, hash_token
 
 logger = logging.getLogger("escal.connectors")
 
@@ -36,6 +37,10 @@ router = APIRouter(prefix="/connectors", tags=["connectors"])
 # Store-scoped, matching the ownership-check pattern used by every other
 # /stores/{store_id}/... router (products, orders, ad_spend, metrics).
 health_router = APIRouter(prefix="/stores/{store_id}/connectors", tags=["connectors"])
+
+# OAuth flows should complete in well under this — it only needs to survive
+# the user's round trip to the provider's consent screen and back.
+OAUTH_STATE_EXPIRE_MINUTES = 10
 
 
 def _upsert_connector_status(
@@ -69,11 +74,49 @@ def _upsert_connector_status(
     db.commit()
 
 
+def _create_oauth_state(db: Session, store_id: UUID, provider: str) -> str:
+    """Issue a CSRF state token for an OAuth handshake, persisting its hash
+    so the matching callback can prove it followed this store's own
+    auth-url step rather than being a forged/replayed request."""
+    raw_token = create_oauth_state_token()
+    db.add(OAuthState(
+        store_id=store_id,
+        provider=provider,
+        token_hash=hash_token(raw_token),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=OAUTH_STATE_EXPIRE_MINUTES),
+    ))
+    db.commit()
+    return raw_token
+
+
+def _consume_oauth_state(db: Session, store_id: UUID, provider: str, state: Optional[str]) -> None:
+    """Validate and burn a one-time OAuth state token. Rejects a missing,
+    unknown, expired, already-used, or wrong store/provider token — this is
+    what actually closes the CSRF gap; issuing the token alone doesn't."""
+    if not state:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing state token")
+
+    row = db.query(OAuthState).filter_by(token_hash=hash_token(state)).first()
+    now = datetime.now(timezone.utc)
+    if (
+        not row
+        or row.store_id != store_id
+        or row.provider != provider
+        or row.consumed_at is not None
+        or row.expires_at < now
+    ):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired state token")
+
+    row.consumed_at = now
+    db.commit()
+
+
 @router.post("/shopify/auth-url")
 def get_shopify_auth_url(
     shop_domain: str,
     store: Store = Depends(get_owned_store),
     _: User = Depends(require_role("owner", "admin")),
+    db: Session = Depends(get_db),
 ):
     """Get Shopify OAuth authorization URL.
 
@@ -83,11 +126,7 @@ def get_shopify_auth_url(
     Returns:
         Authorization URL to redirect user to
     """
-    # Generate state token for CSRF protection
-    state_token = str(uuid4())
-
-    # Store state in session or cache (for demo, we'll use a simple approach)
-    # In production, store in Redis or database
+    state_token = _create_oauth_state(db, store.id, "shopify")
     connector = ShopifyConnector(str(store.id), shop_domain)
     auth_url = connector.get_oauth_url(state_token)
 
@@ -116,8 +155,8 @@ def shopify_oauth_callback(
     Returns:
         Success message
     """
-    # TODO: Validate state token
     store_id = store.id
+    _consume_oauth_state(db, store_id, "shopify", state)
 
     try:
         connector = ShopifyConnector(str(store_id), shop)
@@ -277,9 +316,10 @@ async def shopify_webhook(
 def get_meta_auth_url(
     store: Store = Depends(get_owned_store),
     _: User = Depends(require_role("owner", "admin")),
+    db: Session = Depends(get_db),
 ):
     """Get Meta OAuth authorization URL."""
-    state_token = str(uuid4())
+    state_token = _create_oauth_state(db, store.id, "meta")
     connector = MetaConnector(str(store.id))
     auth_url = connector.get_oauth_url(state_token)
 
@@ -292,6 +332,7 @@ def get_meta_auth_url(
 @router.post("/meta/callback")
 def meta_oauth_callback(
     code: str,
+    state: Optional[str] = None,
     ad_account_id: Optional[str] = None,
     store: Store = Depends(get_owned_store),
     _: User = Depends(require_role("owner", "admin")),
@@ -299,6 +340,7 @@ def meta_oauth_callback(
 ):
     """Handle Meta OAuth callback."""
     store_id = store.id
+    _consume_oauth_state(db, store_id, "meta", state)
 
     try:
         connector = MetaConnector(str(store_id), ad_account_id)
@@ -396,9 +438,10 @@ def sync_meta_ad_spend(
 def get_google_auth_url(
     store: Store = Depends(get_owned_store),
     _: User = Depends(require_role("owner", "admin")),
+    db: Session = Depends(get_db),
 ):
     """Get Google OAuth authorization URL."""
-    state_token = str(uuid4())
+    state_token = _create_oauth_state(db, store.id, "google")
     connector = GoogleAdsConnector(str(store.id))
     auth_url = connector.get_oauth_url(state_token)
 
@@ -411,6 +454,7 @@ def get_google_auth_url(
 @router.post("/google/callback")
 def google_oauth_callback(
     code: str,
+    state: Optional[str] = None,
     customer_id: Optional[str] = None,
     store: Store = Depends(get_owned_store),
     _: User = Depends(require_role("owner", "admin")),
@@ -418,6 +462,7 @@ def google_oauth_callback(
 ):
     """Handle Google OAuth callback."""
     store_id = store.id
+    _consume_oauth_state(db, store_id, "google", state)
 
     try:
         connector = GoogleAdsConnector(str(store_id), customer_id)
@@ -541,9 +586,10 @@ def sync_google_ad_spend(
 def get_tiendanube_auth_url(
     store: Store = Depends(get_owned_store),
     _: User = Depends(require_role("owner", "admin")),
+    db: Session = Depends(get_db),
 ):
     """Get Tiendanube OAuth authorization URL."""
-    state_token = str(uuid4())
+    state_token = _create_oauth_state(db, store.id, "tiendanube")
     connector = TiendanubeConnector(str(store.id))
     auth_url = connector.get_oauth_url(state_token)
 
@@ -556,12 +602,14 @@ def get_tiendanube_auth_url(
 @router.post("/tiendanube/callback")
 def tiendanube_oauth_callback(
     code: str,
+    state: Optional[str] = None,
     store: Store = Depends(get_owned_store),
     _: User = Depends(require_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Handle Tiendanube OAuth callback."""
     store_id = store.id
+    _consume_oauth_state(db, store_id, "tiendanube", state)
 
     try:
         connector = TiendanubeConnector(str(store_id))
@@ -715,9 +763,10 @@ async def tiendanube_webhook(
 def get_mercadopago_auth_url(
     store: Store = Depends(get_owned_store),
     _: User = Depends(require_role("owner", "admin")),
+    db: Session = Depends(get_db),
 ):
     """Get MercadoPago OAuth authorization URL."""
-    state_token = str(uuid4())
+    state_token = _create_oauth_state(db, store.id, "mercadopago")
     connector = MercadoPagoConnector(str(store.id))
     auth_url = connector.get_oauth_url(state_token)
 
@@ -730,12 +779,14 @@ def get_mercadopago_auth_url(
 @router.post("/mercadopago/callback")
 def mercadopago_oauth_callback(
     code: str,
+    state: Optional[str] = None,
     store: Store = Depends(get_owned_store),
     _: User = Depends(require_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Handle MercadoPago OAuth callback."""
     store_id = store.id
+    _consume_oauth_state(db, store_id, "mercadopago", state)
 
     try:
         connector = MercadoPagoConnector(str(store_id))

@@ -52,3 +52,18 @@ class ConnectorStatus(Base):
     last_synced_at = Column(DateTime(timezone=True))
     last_success_at = Column(DateTime(timezone=True))
     last_error = Column(Text)
+
+
+class OAuthState(Base):
+    """CSRF state tokens for the OAuth handshake — issued by */auth-url,
+    burned by the matching */callback. See db/init/013_oauth_states.sql."""
+
+    __tablename__ = "oauth_states"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id = Column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
+    provider = Column(String(50), nullable=False)
+    token_hash = Column(String(64), unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    consumed_at = Column(DateTime(timezone=True))  # NULL = still valid/unused
