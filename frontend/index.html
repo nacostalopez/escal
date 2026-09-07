@@ -20,36 +20,67 @@
   <main id="app">
     <!-- Auth view -->
     <section id="auth-view" class="auth-view">
-      <div class="auth-card">
-        <div class="auth-tabs">
-          <button id="tab-login" class="auth-tab active">Log in</button>
-          <button id="tab-register" class="auth-tab">Register</button>
+      <div class="auth-hero">
+        <svg class="auth-hero-flow" viewBox="0 0 520 640" preserveAspectRatio="xMidYMid slice">
+          <path d="M-20 420 C 90 380, 150 460, 240 400 S 400 300, 540 340" fill="none" stroke="#2b3f63" stroke-width="1.5"/>
+          <path d="M-20 480 C 100 440, 160 520, 250 460 S 410 360, 540 400" fill="none" stroke="#223354" stroke-width="1.5"/>
+          <path d="M-20 540 C 110 500, 170 580, 260 520 S 420 420, 540 460" fill="none" stroke="#1c2947" stroke-width="1.5"/>
+          <circle cx="420" cy="180" r="4" fill="#7DB8D9"/>
+          <circle cx="480" cy="280" r="4" fill="#7DB8D9"/>
+          <circle cx="440" cy="420" r="4" fill="#7DB8D9"/>
+          <circle cx="500" cy="140" r="3.5" fill="#2263A2"/>
+          <circle cx="460" cy="520" r="3.5" fill="#2263A2"/>
+        </svg>
+        <div class="auth-hero-content">
+          <div class="auth-hero-brand">ARAMAL</div>
+          <h1 class="auth-hero-title">Conectá tu operación.<br />Controlá el resultado.</h1>
+          <p class="auth-hero-sub">Gestión, ventas, caja y datos en tiempo real — en una sola plataforma que conecta cada parte de tu negocio.</p>
+
+          <div class="auth-hero-preview">
+            <span class="auth-hero-preview-label">True ROAS</span>
+            <span class="auth-hero-preview-value">3.18x</span>
+            <span class="auth-hero-preview-sub">Local Centro · últimos 14 días</span>
+          </div>
+
+          <div class="auth-hero-trust">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7DB8D9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            Datos y credenciales cifrados en reposo.
+          </div>
         </div>
+      </div>
 
-        <form id="login-form" class="auth-form">
-          <label>Email
-            <input type="email" id="login-email" required autocomplete="username" />
-          </label>
-          <label>Password
-            <input type="password" id="login-password" required autocomplete="current-password" />
-          </label>
-          <button type="submit" class="btn btn-primary">Log in</button>
-        </form>
+      <div class="auth-formside">
+        <div class="auth-card">
+          <div class="auth-tabs">
+            <button id="tab-login" class="auth-tab active">Log in</button>
+            <button id="tab-register" class="auth-tab">Register</button>
+          </div>
 
-        <form id="register-form" class="auth-form" hidden>
-          <label>Account name
-            <input type="text" id="register-account-name" required placeholder="My Store LLC" />
-          </label>
-          <label>Email
-            <input type="email" id="register-email" required autocomplete="username" />
-          </label>
-          <label>Password
-            <input type="password" id="register-password" required minlength="8" autocomplete="new-password" />
-          </label>
-          <button type="submit" class="btn btn-primary">Create account</button>
-        </form>
+          <form id="login-form" class="auth-form">
+            <label>Email
+              <input type="email" id="login-email" required autocomplete="username" />
+            </label>
+            <label>Password
+              <input type="password" id="login-password" required autocomplete="current-password" />
+            </label>
+            <button type="submit" class="btn btn-primary">Log in</button>
+          </form>
 
-        <p id="auth-error" class="error-text" hidden></p>
+          <form id="register-form" class="auth-form" hidden>
+            <label>Account name
+              <input type="text" id="register-account-name" required placeholder="My Store LLC" />
+            </label>
+            <label>Email
+              <input type="email" id="register-email" required autocomplete="username" />
+            </label>
+            <label>Password
+              <input type="password" id="register-password" required minlength="8" autocomplete="new-password" />
+            </label>
+            <button type="submit" class="btn btn-primary">Create account</button>
+          </form>
+
+          <p id="auth-error" class="error-text" hidden></p>
+        </div>
       </div>
     </section>
 
