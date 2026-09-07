@@ -222,7 +222,7 @@
               "pm.test('net_profit is 132.00 (200-10-5-3-50)', () => pm.expect(parseFloat(json.net_profit)).to.eql(132.00));",
               "pm.test('total_ad_spend is 33.00', () => pm.expect(parseFloat(json.total_ad_spend)).to.eql(33.00));",
               "pm.test('real_profit_after_ads is 99.00 (132-33)', () => pm.expect(parseFloat(json.real_profit_after_ads)).to.eql(99.00));",
-              "pm.test('true_roas is 6.06 (200/33 rounded)', () => pm.expect(parseFloat(json.true_roas)).to.eql(6.06));"
+              "pm.test('true_roas is 4.0 (132/33, net profit per ad dollar)', () => pm.expect(parseFloat(json.true_roas)).to.eql(4.0));"
             ]
           }
         }

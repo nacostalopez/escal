@@ -99,9 +99,12 @@ curl -X POST localhost:8000/auth/logout \
 # revokes just that one refresh token (this device/session)
 ```
 
-**Known gap in this repo right now**: the frontend (`frontend/`) only stores
-`access_token` and never calls `/auth/refresh` — until that's wired up,
-users of the frontend will be prompted to log in again every 15 minutes.
+The frontend (`frontend/`) stores both tokens and transparently refreshes:
+any `401` from the API triggers one `/auth/refresh` call (concurrent 401s
+share a single in-flight refresh so the token isn't rotated twice), then
+retries the original request — so a session survives past the 15-minute
+access token lifetime without re-prompting for login, until the refresh
+token itself expires or is revoked.
 
 Every `/stores/{id}/...` route checks that the store belongs to the caller's
 account (404, not 403, on mismatch — no confirming another account's store
@@ -126,7 +129,9 @@ beyond local dev — see `.env.example`.
 - `POST /stores/{id}/pixel-events` (bulk ingest), `GET /stores/{id}/pixel-events?...`
 - `POST /stores/{id}/ad-spend` (bulk ingest), `GET /stores/{id}/ad-spend?...`
 - `GET /stores/{id}/metrics/summary?start=&end=` — revenue, net profit, ad spend,
-  real profit after ads, **true ROAS** (reads live from `orders`, always fresh)
+  real profit after ads, **true ROAS** (`net_profit / ad_spend` — net of discounts,
+  shipping, gateway fees and COGS, not plain revenue/spend; reads live from
+  `orders`, always fresh)
 - `GET /stores/{id}/metrics/daily?start=&end=` — daily breakdown via the
   `daily_financial_summary` continuous aggregate (fast, but can lag up to ~1h
   behind since it refreshes on an hourly policy — see `db/init/004_continuous_aggregates.sql`)
@@ -145,13 +150,9 @@ Schema, ingestion, profit/ROAS math, auth/credential-encryption,
 Shopify/Meta/Google/Tiendanube/MercadoPago connectors, CI, a first frontend,
 structured logging, rate limiting, env-var validation, webhook e2e tests,
 multi-user accounts with Owner/Admin/Viewer roles, revocable refresh tokens,
-and invite emails (via SMTP, configurable through env vars) are done. Not
-yet built:
+invite emails (via SMTP, configurable through env vars), and transparent
+frontend token refresh are done. Not yet built:
 
-- The frontend still only stores `access_token` and never calls
-  `/auth/refresh` — since access tokens are now short-lived (15 min
-  default), the frontend will need that wiring before this stops being a
-  UX regression there
 - The frontend is intentionally minimal (`frontend/`, no build step) — fine
   for seeing real numbers locally, not meant as a finished product design,
   and doesn't yet have UI for the member/invite management routes above (an

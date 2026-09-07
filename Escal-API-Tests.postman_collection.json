@@ -619,7 +619,7 @@
                   "pm.test(\"True ROAS calculation is correct\", function () {",
                   "    var jsonData = pm.response.json();",
                   "    if (jsonData.total_ad_spend > 0) {",
-                  "        var expectedRoas = Math.round((jsonData.revenue / jsonData.total_ad_spend) * 100) / 100;",
+                  "        var expectedRoas = Math.round((jsonData.net_profit / jsonData.total_ad_spend) * 100) / 100;",
                   "        pm.expect(jsonData.true_roas).to.equal(expectedRoas);",
                   "    }",
                   "});"

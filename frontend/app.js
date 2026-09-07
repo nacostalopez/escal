@@ -4,6 +4,7 @@ const API_BASE = window.location.hostname === "" || window.location.protocol ===
 
 const state = {
   token: localStorage.getItem("escal_token") || null,
+  refreshToken: localStorage.getItem("escal_refresh_token") || null,
   account: null,
   stores: [],
   activeStoreId: null,
@@ -13,7 +14,33 @@ const state = {
 // API helper
 // ---------------------------------------------------------------------------
 
-async function api(path, { method = "GET", body, auth = true } = {}) {
+// Concurrent 401s (e.g. metrics + connector health firing together) must
+// share one in-flight refresh instead of racing to rotate the token twice —
+// the second rotation would revoke the first one's brand-new refresh token.
+let refreshPromise = null;
+
+async function refreshAccessToken() {
+  if (!state.refreshToken) throw new Error("No refresh token");
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: state.refreshToken }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error((data && data.detail) || "Session expired");
+        setTokens(data.access_token, data.refresh_token);
+        return data;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+async function api(path, { method = "GET", body, auth = true, _retried = false } = {}) {
   const headers = { "Content-Type": "application/json" };
   if (auth && state.token) headers["Authorization"] = `Bearer ${state.token}`;
 
@@ -22,6 +49,16 @@ async function api(path, { method = "GET", body, auth = true } = {}) {
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+
+  if (res.status === 401 && auth && !_retried && state.refreshToken) {
+    try {
+      await refreshAccessToken();
+    } catch (err) {
+      sessionExpired();
+      throw err;
+    }
+    return api(path, { method, body, auth, _retried: true });
+  }
 
   if (res.status === 204) return null;
 
@@ -66,7 +103,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
         password: document.getElementById("login-password").value,
       },
     });
-    setToken(data.access_token);
+    setTokens(data.access_token, data.refresh_token);
     await enterDashboard();
   } catch (err) {
     showAuthError(err.message);
@@ -86,21 +123,26 @@ document.getElementById("register-form").addEventListener("submit", async (e) =>
         password: document.getElementById("register-password").value,
       },
     });
-    setToken(data.access_token);
+    setTokens(data.access_token, data.refresh_token);
     await enterDashboard();
   } catch (err) {
     showAuthError(err.message);
   }
 });
 
-document.getElementById("logout-btn").addEventListener("click", () => {
-  setToken(null);
-  state.account = null;
-  state.stores = [];
-  state.activeStoreId = null;
-  authView.hidden = false;
-  dashboardView.hidden = true;
-  topbarAccount.hidden = true;
+document.getElementById("logout-btn").addEventListener("click", async () => {
+  const refreshToken = state.refreshToken;
+  try {
+    if (refreshToken) {
+      await api("/auth/logout", { method: "POST", body: { refresh_token: refreshToken } });
+    }
+  } catch (err) {
+    // Best-effort revoke — log out locally regardless of whether the
+    // server call succeeded (e.g. token already expired/rotated).
+  } finally {
+    setTokens(null, null);
+    showLoggedOut();
+  }
 });
 
 function showAuthError(message) {
@@ -108,10 +150,28 @@ function showAuthError(message) {
   authError.hidden = false;
 }
 
-function setToken(token) {
-  state.token = token;
-  if (token) localStorage.setItem("escal_token", token);
+function showLoggedOut() {
+  state.account = null;
+  state.stores = [];
+  state.activeStoreId = null;
+  authView.hidden = false;
+  dashboardView.hidden = true;
+  topbarAccount.hidden = true;
+}
+
+function sessionExpired() {
+  showLoggedOut();
+  switchAuthTab("login");
+  showAuthError("Your session expired — please log in again.");
+}
+
+function setTokens(accessToken, refreshToken) {
+  state.token = accessToken;
+  state.refreshToken = refreshToken;
+  if (accessToken) localStorage.setItem("escal_token", accessToken);
   else localStorage.removeItem("escal_token");
+  if (refreshToken) localStorage.setItem("escal_refresh_token", refreshToken);
+  else localStorage.removeItem("escal_refresh_token");
 }
 
 // ---------------------------------------------------------------------------
@@ -387,10 +447,10 @@ async function seedDemoData(storeId) {
 // ---------------------------------------------------------------------------
 
 (async function boot() {
-  if (!state.token) return;
+  if (!state.token && !state.refreshToken) return;
   try {
     await enterDashboard();
   } catch (err) {
-    setToken(null);
+    setTokens(null, null);
   }
 })();

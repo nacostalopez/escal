@@ -35,7 +35,12 @@ SUMMARY_SQL = text(
         o.net_profit,
         a.total_ad_spend,
         (o.net_profit - a.total_ad_spend) AS real_profit_after_ads,
-        ROUND((o.revenue / NULLIF(a.total_ad_spend, 0))::numeric, 2) AS true_roas
+        -- Unlike plain ROAS (revenue / spend), this is net of discounts,
+        -- shipping, payment-gateway fees and COGS (net_profit is a
+        -- GENERATED column on orders, see db/init/003_hypertables.sql) —
+        -- it answers "how much profit per ad dollar", not "how much
+        -- revenue per ad dollar".
+        ROUND((o.net_profit / NULLIF(a.total_ad_spend, 0))::numeric, 2) AS true_roas
     FROM metrics_orders o, metrics_ads a
     """
 )

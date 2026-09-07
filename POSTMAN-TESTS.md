@@ -86,7 +86,7 @@ newman run Escal-API-Tests.postman_collection.json \
 
 ### 📁 METRICS (2 tests)
 - ✅ Get Summary Metrics → Revenue, Net Profit, True ROAS
-  - Validates: `true_roas = revenue / ad_spend`
+  - Validates: `true_roas = net_profit / ad_spend`
   - Validates: `real_profit_after_ads = net_profit - ad_spend`
 - ✅ Get Daily Metrics → Daily breakdown from continuous aggregate
 
@@ -151,7 +151,7 @@ Every request includes automatic tests:
 
 ### Metrics Tests
 ```javascript
-✅ true_roas = revenue / ad_spend (calculation verified)
+✅ true_roas = net_profit / ad_spend (calculation verified)
 ✅ real_profit_after_ads = net_profit - ad_spend
 ✅ All values non-negative
 ✅ Schema matches expected fields

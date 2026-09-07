@@ -529,7 +529,7 @@ SQL views in `db/init/004_continuous_aggregates.sql` provide:
 - `daily_financial_summary` - Refreshed hourly with orders + COGS data
 - `metrics/summary` endpoint joins this with real ad spend:
   ```
-  true_roas = revenue / ad_spend
+  true_roas = net_profit / ad_spend  # net of discounts, shipping, gateway fees, COGS — not plain revenue/spend
   real_profit_after_ads = net_profit - ad_spend
   ```
 
