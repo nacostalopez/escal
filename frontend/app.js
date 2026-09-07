@@ -6,8 +6,10 @@ const state = {
   token: localStorage.getItem("escal_token") || null,
   refreshToken: localStorage.getItem("escal_refresh_token") || null,
   account: null,
+  currentUser: null,
   stores: [],
   activeStoreId: null,
+  activeStoreCurrency: "USD",
 };
 
 // ---------------------------------------------------------------------------
@@ -200,12 +202,32 @@ function setTokens(accessToken, refreshToken) {
 
 async function enterDashboard() {
   state.account = await api("/accounts/me");
+  state.currentUser = await api("/auth/me");
   document.getElementById("account-name").textContent = state.account.name;
+  // Only owner/admin can list members (see require_role on GET /accounts/members).
+  document.getElementById("nav-members").hidden = state.currentUser.role === "viewer";
   topbarAccount.hidden = false;
   authView.hidden = true;
   dashboardView.hidden = false;
+  switchDashboardView("dashboard");
 
   await loadStores();
+}
+
+// ---------------------------------------------------------------------------
+// Sidebar nav (Dashboard / Equipo)
+// ---------------------------------------------------------------------------
+
+document.getElementById("nav-dashboard").addEventListener("click", () => switchDashboardView("dashboard"));
+document.getElementById("nav-members").addEventListener("click", () => switchDashboardView("members"));
+
+function switchDashboardView(view) {
+  const isDashboard = view === "dashboard";
+  document.getElementById("nav-dashboard").classList.toggle("active", isDashboard);
+  document.getElementById("nav-members").classList.toggle("active", !isDashboard);
+  document.getElementById("dashboard-panels").hidden = !isDashboard;
+  document.getElementById("members-panel").hidden = isDashboard;
+  if (!isDashboard) loadMembers();
 }
 
 async function loadStores() {
@@ -238,11 +260,13 @@ function renderStoreList() {
 }
 
 async function selectStore(storeId) {
+  switchDashboardView("dashboard");
   state.activeStoreId = storeId;
   renderStoreList();
   document.getElementById("store-panel").hidden = false;
 
   const store = state.stores.find((s) => s.id === storeId);
+  state.activeStoreCurrency = store.currency || "USD";
   document.getElementById("store-name").textContent = store.name;
   document.getElementById("store-meta").textContent = `${store.platform} · ${store.currency}`;
 
@@ -263,32 +287,67 @@ function dateRange() {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
-function fmtMoney(n) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n || 0);
+function fmtMoney(n, currency) {
+  return new Intl.NumberFormat("es-AR", { style: "currency", currency: currency || "USD" }).format(n || 0);
+}
+
+function previousDateRange(startIso, endIso) {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  const durationMs = end.getTime() - start.getTime();
+  return {
+    start: new Date(start.getTime() - durationMs).toISOString(),
+    end: start.toISOString(),
+  };
+}
+
+// className carries "positive"/"negative" color; pass neutral: true for
+// metrics (like ad spend) where a change isn't inherently good or bad.
+function renderDelta(elId, current, previous, { neutral = false } = {}) {
+  const el = document.getElementById(elId);
+  if (previous === null || previous === undefined || previous === 0 || current === null || current === undefined) {
+    el.textContent = "";
+    el.className = "stat-delta";
+    return;
+  }
+  const pct = ((current - previous) / Math.abs(previous)) * 100;
+  const rounded = Math.abs(pct) < 10 ? Math.abs(pct).toFixed(1) : Math.round(Math.abs(pct));
+  const sign = pct >= 0 ? "▲" : "▼";
+  el.textContent = `${sign} ${rounded}% vs. período anterior`;
+  el.className = "stat-delta " + (neutral ? "neutral" : pct >= 0 ? "positive" : "negative");
 }
 
 async function refreshMetrics() {
   if (!state.activeStoreId) return;
   const { start, end } = dateRange();
   const qs = `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+  const prevRange = previousDateRange(start, end);
+  const prevQs = `start=${encodeURIComponent(prevRange.start)}&end=${encodeURIComponent(prevRange.end)}`;
 
-  const [summary, daily] = await Promise.all([
+  const [summary, daily, prevSummary] = await Promise.all([
     api(`/stores/${state.activeStoreId}/metrics/summary?${qs}`),
     api(`/stores/${state.activeStoreId}/metrics/daily?${qs}`),
+    api(`/stores/${state.activeStoreId}/metrics/summary?${prevQs}`),
   ]);
 
   document.getElementById("metrics-empty").hidden = summary.revenue > 0;
 
-  document.getElementById("stat-revenue").textContent = fmtMoney(summary.revenue);
-  document.getElementById("stat-net-profit").textContent = fmtMoney(summary.net_profit);
-  document.getElementById("stat-ad-spend").textContent = fmtMoney(summary.total_ad_spend);
+  document.getElementById("stat-revenue").textContent = fmtMoney(summary.revenue, state.activeStoreCurrency);
+  document.getElementById("stat-net-profit").textContent = fmtMoney(summary.net_profit, state.activeStoreCurrency);
+  document.getElementById("stat-ad-spend").textContent = fmtMoney(summary.total_ad_spend, state.activeStoreCurrency);
 
   const realProfitEl = document.getElementById("stat-real-profit");
-  realProfitEl.textContent = fmtMoney(summary.real_profit_after_ads);
+  realProfitEl.textContent = fmtMoney(summary.real_profit_after_ads, state.activeStoreCurrency);
   realProfitEl.className = "stat-value " + (summary.real_profit_after_ads >= 0 ? "positive" : "negative");
 
   document.getElementById("stat-roas").textContent =
     summary.true_roas === null || summary.true_roas === undefined ? "—" : `${summary.true_roas}x`;
+
+  renderDelta("stat-revenue-delta", summary.revenue, prevSummary.revenue);
+  renderDelta("stat-net-profit-delta", summary.net_profit, prevSummary.net_profit);
+  renderDelta("stat-ad-spend-delta", summary.total_ad_spend, prevSummary.total_ad_spend, { neutral: true });
+  renderDelta("stat-real-profit-delta", summary.real_profit_after_ads, prevSummary.real_profit_after_ads);
+  renderDelta("stat-roas-delta", summary.true_roas, prevSummary.true_roas);
 
   state.lastDaily = daily;
   renderChart(daily);
@@ -297,7 +356,7 @@ async function refreshMetrics() {
 function renderChart(daily) {
   const container = document.getElementById("chart-container");
   if (!daily.length) {
-    container.innerHTML = '<div class="chart-empty">No daily data in this range yet.</div>';
+    container.innerHTML = '<div class="chart-empty">Todavía no hay datos en este rango.</div>';
     return;
   }
 
@@ -339,8 +398,8 @@ function renderChart(daily) {
       ${labels}
     </svg>
     <div style="display:flex;gap:16px;font-size:12px;color:${colorText};margin-top:6px;">
-      <span><span style="display:inline-block;width:9px;height:9px;background:${colorRevenue};border-radius:2px;margin-right:4px;"></span>Revenue</span>
-      <span><span style="display:inline-block;width:9px;height:9px;background:${colorSpend};border-radius:2px;margin-right:4px;"></span>Ad spend</span>
+      <span><span style="display:inline-block;width:9px;height:9px;background:${colorRevenue};border-radius:2px;margin-right:4px;"></span>Ventas</span>
+      <span><span style="display:inline-block;width:9px;height:9px;background:${colorSpend};border-radius:2px;margin-right:4px;"></span>Gasto en ads</span>
     </div>
   `;
 }
@@ -358,12 +417,12 @@ async function refreshConnectorHealth() {
     .map((provider) => {
       const info = health[provider];
       let dotClass = "none";
-      let statusText = "Not connected";
+      let statusText = "No conectado";
       if (info) {
         dotClass = info.last_error ? "error" : "ok";
         statusText = info.last_error
           ? `Error: ${info.last_error}`
-          : `Last synced ${info.last_synced_at ? new Date(info.last_synced_at).toLocaleString() : "—"}`;
+          : `Sincronizado ${info.last_synced_at ? new Date(info.last_synced_at).toLocaleString("es-AR") : "—"}`;
       }
       return `
         <div class="connector-card">
@@ -402,21 +461,173 @@ document.getElementById("new-store-form").addEventListener("submit", async (e) =
 });
 
 // ---------------------------------------------------------------------------
+// Members & invites
+// ---------------------------------------------------------------------------
+
+async function loadMembers() {
+  const errorEl = document.getElementById("members-error");
+  errorEl.hidden = true;
+  const inviteBtn = document.getElementById("invite-btn");
+  const invitesPanel = document.getElementById("invites-panel");
+
+  try {
+    const members = await api("/accounts/members");
+    renderMembers(members);
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.hidden = false;
+    return;
+  }
+
+  // Invite/role-change/remove are owner-only on the backend — admins see
+  // the member list read-only and never learn pending invites exist.
+  const isOwner = state.currentUser.role === "owner";
+  inviteBtn.hidden = !isOwner;
+  invitesPanel.hidden = !isOwner;
+  if (isOwner) {
+    const invites = await api("/accounts/invites");
+    renderInvites(invites);
+  }
+}
+
+function fmtDate(iso) {
+  return iso ? new Date(iso).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" }) : "—";
+}
+
+function renderMembers(members) {
+  const isOwner = state.currentUser.role === "owner";
+  const list = document.getElementById("members-list");
+  list.innerHTML = members
+    .map((m) => {
+      const isSelf = m.id === state.currentUser.id;
+      const actions = isOwner && !isSelf
+        ? `
+          <div class="member-actions">
+            <select data-member-id="${m.id}" class="role-select">
+              <option value="owner" ${m.role === "owner" ? "selected" : ""}>Owner</option>
+              <option value="admin" ${m.role === "admin" ? "selected" : ""}>Admin</option>
+              <option value="viewer" ${m.role === "viewer" ? "selected" : ""}>Viewer</option>
+            </select>
+            <button type="button" class="link-danger" data-remove-member="${m.id}">Quitar</button>
+          </div>
+        `
+        : `<span class="role-badge ${m.role}">${m.role}</span>`;
+      return `
+        <div class="member-row">
+          <div>
+            <div class="member-email">${m.email}${isSelf ? ' <span class="you-tag">· vos</span>' : ""}</div>
+            <div class="member-meta">Miembro desde ${fmtDate(m.created_at)}</div>
+          </div>
+          ${actions}
+        </div>
+      `;
+    })
+    .join("");
+
+  list.querySelectorAll(".role-select").forEach((select) => {
+    select.addEventListener("change", () => updateMemberRole(select.dataset.memberId, select.value));
+  });
+  list.querySelectorAll("[data-remove-member]").forEach((btn) => {
+    btn.addEventListener("click", () => removeMember(btn.dataset.removeMember));
+  });
+}
+
+function renderInvites(invites) {
+  const list = document.getElementById("invites-list");
+  if (!invites.length) {
+    list.innerHTML = '<p class="muted">No hay invitaciones pendientes.</p>';
+    return;
+  }
+  list.innerHTML = invites
+    .map((inv) => `
+      <div class="invite-row">
+        <div>
+          <div class="member-email">${inv.email}</div>
+          <div class="member-meta">Invitado el ${fmtDate(inv.created_at)}</div>
+        </div>
+        <span class="role-badge ${inv.role}">${inv.role}</span>
+        <div class="member-actions">
+          <button type="button" class="link-danger" data-revoke-invite="${inv.id}">Revocar</button>
+        </div>
+      </div>
+    `)
+    .join("");
+
+  list.querySelectorAll("[data-revoke-invite]").forEach((btn) => {
+    btn.addEventListener("click", () => revokeInvite(btn.dataset.revokeInvite));
+  });
+}
+
+async function updateMemberRole(memberId, role) {
+  try {
+    await api(`/accounts/members/${memberId}/role`, { method: "PATCH", body: { role } });
+  } catch (err) {
+    alert(err.message);
+  }
+  await loadMembers();
+}
+
+async function removeMember(memberId) {
+  if (!confirm("¿Quitar a este miembro de la cuenta?")) return;
+  try {
+    await api(`/accounts/members/${memberId}`, { method: "DELETE" });
+  } catch (err) {
+    alert(err.message);
+  }
+  await loadMembers();
+}
+
+async function revokeInvite(inviteId) {
+  if (!confirm("¿Revocar esta invitación?")) return;
+  try {
+    await api(`/accounts/invites/${inviteId}`, { method: "DELETE" });
+  } catch (err) {
+    alert(err.message);
+  }
+  await loadMembers();
+}
+
+const inviteModal = document.getElementById("invite-modal");
+document.getElementById("invite-btn").addEventListener("click", () => (inviteModal.hidden = false));
+document.getElementById("invite-cancel").addEventListener("click", () => (inviteModal.hidden = true));
+
+document.getElementById("invite-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById("invite-form-error");
+  errorEl.hidden = true;
+  try {
+    await api("/accounts/invites", {
+      method: "POST",
+      body: {
+        email: document.getElementById("invite-email").value,
+        role: document.getElementById("invite-role").value,
+      },
+    });
+    inviteModal.hidden = true;
+    document.getElementById("invite-form").reset();
+    await loadMembers();
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.hidden = false;
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Seed demo data (mirrors scripts/seed_demo.py, run from the browser)
 // ---------------------------------------------------------------------------
 
 document.getElementById("seed-btn").addEventListener("click", async () => {
   const btn = document.getElementById("seed-btn");
   btn.disabled = true;
-  btn.textContent = "Seeding…";
+  btn.textContent = "Cargando…";
   try {
     await seedDemoData(state.activeStoreId);
     await refreshMetrics();
   } catch (err) {
-    alert(`Seeding failed: ${err.message}`);
+    alert(`No se pudo cargar la demo: ${err.message}`);
   } finally {
     btn.disabled = false;
-    btn.textContent = "Seed demo data";
+    btn.textContent = "Cargar datos de demo";
   }
 });
 

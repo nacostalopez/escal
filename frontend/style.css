@@ -292,6 +292,18 @@ a:hover { text-decoration: underline; }
   padding: 20px 16px;
   background: var(--panel);
 }
+
+.sidebar-nav { display: flex; flex-direction: column; gap: 2px; margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.nav-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px 10px; border: none; border-radius: 7px;
+  background: transparent; color: var(--muted);
+  font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; text-align: left;
+}
+.nav-item:hover { background: var(--bg); }
+.nav-item.active { background: var(--highlight); color: var(--primary); }
+.nav-item svg { flex: none; }
+
 .sidebar-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 10px; }
 
 .store-list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -329,9 +341,9 @@ a:hover { text-decoration: underline; }
   font-size: 14px;
 }
 
-.stat-grid {
+.bento-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -344,13 +356,31 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
   gap: 6px;
+  justify-content: center;
 }
-.stat-card-highlight { background: var(--highlight); border-color: var(--celeste); }
+.stat-hero {
+  grid-column: 1 / 3;
+  grid-row: 1 / 3;
+  background: var(--highlight);
+  border-color: var(--celeste);
+  padding: 22px;
+}
+.stat-hero-value { font-family: "Inter", sans-serif; font-size: 44px; }
 
 .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
-.stat-value { font-size: 22px; font-weight: 700; }
+.stat-value { font-family: "Inter", sans-serif; font-size: 22px; font-weight: 700; }
 .stat-value.negative { color: var(--danger); }
 .stat-value.positive { color: var(--positive); }
+
+.stat-delta { font-size: 11.5px; font-weight: 600; min-height: 14px; }
+.stat-delta.positive { color: var(--positive); }
+.stat-delta.negative { color: var(--danger); }
+.stat-delta.neutral { color: var(--muted); }
+
+@media (max-width: 900px) {
+  .bento-grid { grid-template-columns: repeat(2, 1fr); }
+  .stat-hero { grid-column: 1 / 3; grid-row: auto; }
+}
 
 .panel {
   background: var(--panel);
@@ -377,6 +407,36 @@ a:hover { text-decoration: underline; }
 }
 .connector-card .connector-name { font-weight: 600; text-transform: capitalize; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
 .connector-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* Members / invites */
+.members-panel .panel:last-child { margin-bottom: 0; }
+.member-row, .invite-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 0; border-top: 1px solid var(--border);
+}
+.member-row:first-child, .invite-row:first-child { border-top: none; padding-top: 0; }
+.member-email { font-size: 13.5px; font-weight: 600; }
+.member-meta { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+.you-tag { font-weight: 400; color: var(--muted); }
+
+.role-badge {
+  font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  text-transform: uppercase; letter-spacing: 0.02em; flex: none;
+}
+.role-badge.owner { background: var(--highlight); color: var(--primary); }
+.role-badge.admin { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+.role-badge.viewer { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+
+.member-actions { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.member-actions select {
+  font-size: 12.5px; padding: 5px 7px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--panel); color: var(--text);
+}
+.link-danger {
+  font-size: 12.5px; font-weight: 600; color: var(--danger);
+  background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
+}
+.link-danger:hover { text-decoration: underline; }
 .connector-dot.ok { background: var(--positive); }
 .connector-dot.error { background: var(--danger); }
 .connector-dot.none { background: #c7cbd1; }
