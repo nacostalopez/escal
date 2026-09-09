@@ -4,6 +4,7 @@ Meta and Google both feed the ad_spend table and must produce the same field
 set. Shopify feeds the orders table and must satisfy OrderCreate. HTTP calls
 are mocked — these are schema/shape checks, not live integration tests.
 """
+
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
@@ -16,13 +17,26 @@ from app.connectors.shopify import ShopifyConnector
 from app.connectors.tiendanube import TiendanubeConnector
 
 AD_SPEND_REQUIRED_FIELDS = {
-    "time", "platform", "campaign_id", "campaign_name",
-    "adset_id", "spend", "impressions", "clicks",
+    "time",
+    "platform",
+    "campaign_id",
+    "campaign_name",
+    "adset_id",
+    "spend",
+    "impressions",
+    "clicks",
 }
 ORDER_REQUIRED_FIELDS = {
-    "order_id", "time", "gross_amount", "discounts", "shipping_fee",
-    "payment_gateway_fee", "cogs_total", "currency",
-    "attribution_utm_source", "attribution_utm_campaign",
+    "order_id",
+    "time",
+    "gross_amount",
+    "discounts",
+    "shipping_fee",
+    "payment_gateway_fee",
+    "cogs_total",
+    "currency",
+    "attribution_utm_source",
+    "attribution_utm_campaign",
 }
 
 
@@ -39,14 +53,22 @@ class TestAdSpendSchemaConsistency:
 
     def test_meta_ad_spend_record_shape(self):
         connector = MetaConnector(store_id="store-1", ad_account_id="act_123")
-        response = _mock_response({
-            "data": [{
-                "campaign_id": "1", "campaign_name": "Test Campaign", "adset_id": "10",
-                "spend": "12.50", "impressions": "1000", "clicks": "20",
-                "date_start": "2026-01-01",
-            }],
-            "paging": {},
-        })
+        response = _mock_response(
+            {
+                "data": [
+                    {
+                        "campaign_id": "1",
+                        "campaign_name": "Test Campaign",
+                        "adset_id": "10",
+                        "spend": "12.50",
+                        "impressions": "1000",
+                        "clicks": "20",
+                        "date_start": "2026-01-01",
+                    }
+                ],
+                "paging": {},
+            }
+        )
         with patch("app.connectors.meta.requests.get", return_value=response):
             records = connector.fetch_ad_spend(
                 "fake-token",
@@ -59,14 +81,18 @@ class TestAdSpendSchemaConsistency:
 
     def test_google_ad_spend_record_shape(self):
         connector = GoogleAdsConnector(store_id="store-1", customer_id="123")
-        response = _mock_response({
-            "results": [{
-                "campaign": {"id": "1", "name": "Test Campaign"},
-                "ad_group": {"id": "10"},
-                "metrics": {"cost_micros": 12500000, "impressions": 1000, "clicks": 20},
-                "segments": {"date": "2026-01-01"},
-            }],
-        })
+        response = _mock_response(
+            {
+                "results": [
+                    {
+                        "campaign": {"id": "1", "name": "Test Campaign"},
+                        "ad_group": {"id": "10"},
+                        "metrics": {"cost_micros": 12500000, "impressions": 1000, "clicks": 20},
+                        "segments": {"date": "2026-01-01"},
+                    }
+                ],
+            }
+        )
         with patch("app.connectors.google.requests.post", return_value=response):
             records = connector.fetch_ad_spend(
                 "fake-token",
@@ -79,13 +105,21 @@ class TestAdSpendSchemaConsistency:
 
     def test_mercadopago_ad_spend_record_shape(self):
         connector = MercadoPagoConnector(store_id="store-1", seller_id="seller-123")
-        response = _mock_response({
-            "results": [{
-                "campaign_id": "1", "campaign_name": "Test Campaign", "adset_id": "10",
-                "spend": 12.50, "impressions": 1000, "clicks": 20,
-                "date": "2026-01-01",
-            }],
-        })
+        response = _mock_response(
+            {
+                "results": [
+                    {
+                        "campaign_id": "1",
+                        "campaign_name": "Test Campaign",
+                        "adset_id": "10",
+                        "spend": 12.50,
+                        "impressions": 1000,
+                        "clicks": 20,
+                        "date": "2026-01-01",
+                    }
+                ],
+            }
+        )
         with patch("app.connectors.mercadopago.requests.get", return_value=response):
             records = connector.fetch_ad_spend(
                 "fake-token",
@@ -102,26 +136,49 @@ class TestAdSpendSchemaConsistency:
         google_connector = GoogleAdsConnector(store_id="store-1", customer_id="123")
         mercadopago_connector = MercadoPagoConnector(store_id="store-1", seller_id="seller-123")
 
-        meta_response = _mock_response({
-            "data": [{
-                "campaign_id": "1", "campaign_name": "C", "adset_id": "10",
-                "spend": "1", "impressions": "1", "clicks": "1", "date_start": "2026-01-01",
-            }],
-            "paging": {},
-        })
-        google_response = _mock_response({
-            "results": [{
-                "campaign": {"id": "1", "name": "C"}, "ad_group": {"id": "10"},
-                "metrics": {"cost_micros": 1000000, "impressions": 1, "clicks": 1},
-                "segments": {"date": "2026-01-01"},
-            }],
-        })
-        mercadopago_response = _mock_response({
-            "results": [{
-                "campaign_id": "1", "campaign_name": "C", "adset_id": "10",
-                "spend": 1, "impressions": 1, "clicks": 1, "date": "2026-01-01",
-            }],
-        })
+        meta_response = _mock_response(
+            {
+                "data": [
+                    {
+                        "campaign_id": "1",
+                        "campaign_name": "C",
+                        "adset_id": "10",
+                        "spend": "1",
+                        "impressions": "1",
+                        "clicks": "1",
+                        "date_start": "2026-01-01",
+                    }
+                ],
+                "paging": {},
+            }
+        )
+        google_response = _mock_response(
+            {
+                "results": [
+                    {
+                        "campaign": {"id": "1", "name": "C"},
+                        "ad_group": {"id": "10"},
+                        "metrics": {"cost_micros": 1000000, "impressions": 1, "clicks": 1},
+                        "segments": {"date": "2026-01-01"},
+                    }
+                ],
+            }
+        )
+        mercadopago_response = _mock_response(
+            {
+                "results": [
+                    {
+                        "campaign_id": "1",
+                        "campaign_name": "C",
+                        "adset_id": "10",
+                        "spend": 1,
+                        "impressions": 1,
+                        "clicks": 1,
+                        "date": "2026-01-01",
+                    }
+                ],
+            }
+        )
 
         with patch("app.connectors.meta.requests.get", return_value=meta_response):
             meta_records = meta_connector.fetch_ad_spend(
@@ -137,6 +194,170 @@ class TestAdSpendSchemaConsistency:
             )
 
         assert set(meta_records[0].keys()) == set(google_records[0].keys()) == set(mercadopago_records[0].keys())
+
+
+CREATIVE_PERFORMANCE_REQUIRED_FIELDS = {
+    "time",
+    "platform",
+    "campaign_id",
+    "campaign_name",
+    "adset_id",
+    "ad_id",
+    "ad_name",
+    "thumbnail_url",
+    "spend",
+    "impressions",
+    "clicks",
+}
+
+
+@pytest.mark.connector
+class TestCreativePerformanceSchemaConsistency:
+    """Meta and Google must both feed the same creative_performance table with the same shape."""
+
+    def test_meta_creative_performance_record_shape(self):
+        connector = MetaConnector(store_id="store-1", ad_account_id="act_123")
+        response = _mock_response(
+            {
+                "data": [
+                    {
+                        "campaign_id": "1",
+                        "campaign_name": "Test Campaign",
+                        "adset_id": "10",
+                        "ad_id": "100",
+                        "ad_name": "Creative A",
+                        "spend": "12.50",
+                        "impressions": "1000",
+                        "clicks": "20",
+                        "date_start": "2026-01-01",
+                    }
+                ],
+                "paging": {},
+            }
+        )
+        with patch("app.connectors.meta.requests.get", return_value=response):
+            records = connector.fetch_creative_performance(
+                "fake-token",
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+                datetime(2026, 1, 31, tzinfo=timezone.utc),
+            )
+        assert len(records) == 1
+        assert CREATIVE_PERFORMANCE_REQUIRED_FIELDS.issubset(records[0].keys())
+        assert records[0]["platform"] == "meta"
+        assert records[0]["ad_id"] == "100"
+        assert records[0]["ad_name"] == "Creative A"
+
+    def test_google_creative_performance_record_shape(self):
+        connector = GoogleAdsConnector(store_id="store-1", customer_id="123")
+        response = _mock_response(
+            {
+                "results": [
+                    {
+                        "campaign": {"id": "1", "name": "Test Campaign"},
+                        "ad_group": {"id": "10"},
+                        "ad_group_ad": {"ad": {"id": "100", "name": "Creative A"}},
+                        "metrics": {"cost_micros": 12500000, "impressions": 1000, "clicks": 20},
+                        "segments": {"date": "2026-01-01"},
+                    }
+                ],
+            }
+        )
+        with patch("app.connectors.google.requests.post", return_value=response):
+            records = connector.fetch_creative_performance(
+                "fake-token",
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+                datetime(2026, 1, 31, tzinfo=timezone.utc),
+            )
+        assert len(records) == 1
+        assert CREATIVE_PERFORMANCE_REQUIRED_FIELDS.issubset(records[0].keys())
+        assert records[0]["platform"] == "google"
+        assert records[0]["ad_id"] == "100"
+        assert records[0]["ad_name"] == "Creative A"
+
+    def test_google_unnamed_ad_falls_back_to_id(self):
+        """Responsive search ads often have no human name."""
+        connector = GoogleAdsConnector(store_id="store-1", customer_id="123")
+        response = _mock_response(
+            {
+                "results": [
+                    {
+                        "campaign": {"id": "1", "name": "Test Campaign"},
+                        "ad_group": {"id": "10"},
+                        "ad_group_ad": {"ad": {"id": "100"}},
+                        "metrics": {"cost_micros": 1000000, "impressions": 100, "clicks": 2},
+                        "segments": {"date": "2026-01-01"},
+                    }
+                ],
+            }
+        )
+        with patch("app.connectors.google.requests.post", return_value=response):
+            records = connector.fetch_creative_performance(
+                "fake-token",
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+                datetime(2026, 1, 31, tzinfo=timezone.utc),
+            )
+        assert records[0]["ad_name"] == "Ad 100"
+
+    def test_creative_performance_connectors_produce_identical_field_sets(self):
+        meta_connector = MetaConnector(store_id="store-1", ad_account_id="act_123")
+        google_connector = GoogleAdsConnector(store_id="store-1", customer_id="123")
+
+        meta_response = _mock_response(
+            {
+                "data": [
+                    {
+                        "campaign_id": "1",
+                        "campaign_name": "C",
+                        "adset_id": "10",
+                        "ad_id": "100",
+                        "ad_name": "A",
+                        "spend": "1",
+                        "impressions": "1",
+                        "clicks": "1",
+                        "date_start": "2026-01-01",
+                    }
+                ],
+                "paging": {},
+            }
+        )
+        google_response = _mock_response(
+            {
+                "results": [
+                    {
+                        "campaign": {"id": "1", "name": "C"},
+                        "ad_group": {"id": "10"},
+                        "ad_group_ad": {"ad": {"id": "100", "name": "A"}},
+                        "metrics": {"cost_micros": 1000000, "impressions": 1, "clicks": 1},
+                        "segments": {"date": "2026-01-01"},
+                    }
+                ],
+            }
+        )
+
+        with patch("app.connectors.meta.requests.get", return_value=meta_response):
+            meta_records = meta_connector.fetch_creative_performance(
+                "t", datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 31, tzinfo=timezone.utc)
+            )
+        with patch("app.connectors.google.requests.post", return_value=google_response):
+            google_records = google_connector.fetch_creative_performance(
+                "t", datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 31, tzinfo=timezone.utc)
+            )
+
+        assert set(meta_records[0].keys()) == set(google_records[0].keys())
+
+    def test_meta_requires_ad_account_id(self):
+        connector = MetaConnector(store_id="store-1")
+        with pytest.raises(ValueError, match="ad_account_id required"):
+            connector.fetch_creative_performance(
+                "t", datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 31, tzinfo=timezone.utc)
+            )
+
+    def test_google_requires_customer_id(self):
+        connector = GoogleAdsConnector(store_id="store-1")
+        with pytest.raises(ValueError, match="customer_id required"):
+            connector.fetch_creative_performance(
+                "t", datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 31, tzinfo=timezone.utc)
+            )
 
 
 @pytest.mark.connector

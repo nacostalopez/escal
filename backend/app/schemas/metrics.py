@@ -19,3 +19,18 @@ class DailyMetricOut(BaseModel):
     total_gateway_fees: float
     total_net_profit: float
     ad_spend: float
+
+
+class CreativeMetricOut(BaseModel):
+    platform: str
+    ad_id: str
+    ad_name: str | None
+    campaign_name: str | None
+    thumbnail_url: str | None
+    spend: float
+    impressions: int
+    clicks: int
+    # Percent (e.g. 2.35 = 2.35%), null with zero impressions.
+    ctr: float | None
+    cpc: float | None
+    cpm: float | None

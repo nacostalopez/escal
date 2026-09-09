@@ -48,3 +48,20 @@ ad_spend = Table(
     Column("impressions", Integer),
     Column("clicks", Integer),
 )
+
+creative_performance = Table(
+    "creative_performance",
+    metadata,
+    Column("time", DateTime(timezone=True), nullable=False),
+    Column("store_id", UUID(as_uuid=True), nullable=False),
+    Column("platform", String(50), nullable=False),
+    Column("campaign_id", String(255), nullable=False),
+    Column("campaign_name", String(255)),
+    Column("adset_id", String(255)),
+    Column("ad_id", String(255), nullable=False),
+    Column("ad_name", String(255)),
+    Column("thumbnail_url", String(500)),
+    Column("spend", Numeric(12, 4), nullable=False),
+    Column("impressions", Integer),
+    Column("clicks", Integer),
+)

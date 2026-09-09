@@ -1,4 +1,5 @@
 """Tests for ownership scoping - ensuring users can only access their account's data."""
+
 from uuid import uuid4
 
 import pytest
@@ -13,7 +14,7 @@ class TestOwnershipScoping:
         """Test that a user cannot access a store from another account."""
         # Create a store in a different account
         from app.models import Store
-        
+
         other_store = Store(
             id=uuid4(),
             account_id=other_account.id,
@@ -22,13 +23,13 @@ class TestOwnershipScoping:
         )
         test_db_session.add(other_store)
         test_db_session.commit()
-        
+
         # Try to access the other store
         response = client.get(
             f"/stores/{other_store.id}/orders",
             headers=auth_header,
         )
-        
+
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "Store not found" in response.json()["detail"]
 
@@ -38,14 +39,14 @@ class TestOwnershipScoping:
             f"/stores/{test_store.id}/orders",
             headers=auth_header,
         )
-        
+
         # Should succeed (may have no orders, but should not 404)
         assert response.status_code in (status.HTTP_200_OK, status.HTTP_204_NO_CONTENT)
 
     def test_ingest_orders_ownership_check(self, client, test_store, other_account, auth_header, test_db_session):
         """Test that order ingestion checks ownership."""
         from app.models import Store
-        
+
         # Create a store in another account
         other_store = Store(
             id=uuid4(),
@@ -55,7 +56,7 @@ class TestOwnershipScoping:
         )
         test_db_session.add(other_store)
         test_db_session.commit()
-        
+
         # Try to ingest orders to the other store
         response = client.post(
             f"/stores/{other_store.id}/orders",
@@ -69,14 +70,14 @@ class TestOwnershipScoping:
                 }
             ],
         )
-        
+
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "Store not found" in response.json()["detail"]
 
     def test_list_orders_ownership_check(self, client, other_account, auth_header, test_db_session):
         """Test that listing orders checks ownership."""
         from app.models import Store
-        
+
         other_store = Store(
             id=uuid4(),
             account_id=other_account.id,
@@ -85,19 +86,19 @@ class TestOwnershipScoping:
         )
         test_db_session.add(other_store)
         test_db_session.commit()
-        
+
         response = client.get(
             f"/stores/{other_store.id}/orders",
             headers=auth_header,
         )
-        
+
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "Store not found" in response.json()["detail"]
 
     def test_ad_spend_ownership_check(self, client, other_account, auth_header, test_db_session):
         """Test that ad spend endpoints check ownership."""
         from app.models import Store
-        
+
         other_store = Store(
             id=uuid4(),
             account_id=other_account.id,
@@ -106,19 +107,19 @@ class TestOwnershipScoping:
         )
         test_db_session.add(other_store)
         test_db_session.commit()
-        
+
         response = client.get(
             f"/stores/{other_store.id}/ad-spend",
             headers=auth_header,
         )
-        
+
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "Store not found" in response.json()["detail"]
 
     def test_metrics_ownership_check(self, client, other_account, auth_header, test_db_session):
         """Test that metrics endpoints check ownership."""
         from app.models import Store
-        
+
         other_store = Store(
             id=uuid4(),
             account_id=other_account.id,
@@ -127,12 +128,33 @@ class TestOwnershipScoping:
         )
         test_db_session.add(other_store)
         test_db_session.commit()
-        
+
         response = client.get(
             f"/stores/{other_store.id}/metrics/summary",
             headers=auth_header,
         )
-        
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert "Store not found" in response.json()["detail"]
+
+    def test_creative_performance_ownership_check(self, client, other_account, auth_header, test_db_session):
+        """Test that creative-performance endpoints check ownership."""
+        from app.models import Store
+
+        other_store = Store(
+            id=uuid4(),
+            account_id=other_account.id,
+            name="Other Account Store",
+            platform="shopify",
+        )
+        test_db_session.add(other_store)
+        test_db_session.commit()
+
+        response = client.get(
+            f"/stores/{other_store.id}/creative-performance",
+            headers=auth_header,
+        )
+
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "Store not found" in response.json()["detail"]
 
@@ -183,7 +205,7 @@ class TestOwnershipScoping:
     def test_no_data_leak_via_error_messages(self, client, other_account, auth_header, test_db_session):
         """Test that error messages don't leak information about other accounts."""
         from app.models import Store
-        
+
         other_store = Store(
             id=uuid4(),
             account_id=other_account.id,
@@ -192,12 +214,12 @@ class TestOwnershipScoping:
         )
         test_db_session.add(other_store)
         test_db_session.commit()
-        
+
         response = client.get(
             f"/stores/{other_store.id}/orders",
             headers=auth_header,
         )
-        
+
         assert response.status_code == status.HTTP_404_NOT_FOUND
         # Error message should not reveal the store exists
         detail = response.json()["detail"]

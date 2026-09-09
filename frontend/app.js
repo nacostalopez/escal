@@ -29,6 +29,7 @@ const WIDGET_LABELS = {
   stat_real_profit: "Profit real (post-ads)",
   chart_daily: "Ventas vs. gasto en ads por día",
   connector_status: "Estado de conectores",
+  creative_performance: "Performance por creativo",
 };
 const STAT_WIDGET_TYPES = ["stat_roas", "stat_revenue", "stat_net_profit", "stat_ad_spend", "stat_real_profit"];
 const ALL_WIDGET_TYPES = Object.keys(WIDGET_LABELS);
@@ -416,6 +417,7 @@ async function selectStore(storeId) {
   renderWidgetsRoot();
   await refreshMetrics();
   await refreshConnectorHealth();
+  await refreshCreativePerformance();
 }
 
 // ---------------------------------------------------------------------------
@@ -471,17 +473,21 @@ function renderStatWidgetShell(w) {
   `;
 }
 
+const PANEL_WIDGET_BODY = {
+  chart_daily: { id: "chart-container", class: "chart-container" },
+  connector_status: { id: "connector-status", class: "connector-grid" },
+  creative_performance: { id: "creative-performance-table", class: "creative-table-wrap" },
+};
+
 function renderPanelWidgetShell(w) {
-  const isChart = w.type === "chart_daily";
-  const bodyId = isChart ? "chart-container" : "connector-status";
-  const bodyClass = isChart ? "chart-container" : "connector-grid";
+  const body = PANEL_WIDGET_BODY[w.type];
   return `
     <div class="panel">
       <div class="widget-card-header">
         <h3>${WIDGET_LABELS[w.type]}</h3>
         ${state.dashboardEditMode ? widgetControlsHtml(w.type, { isStat: false }) : ""}
       </div>
-      <div id="${bodyId}" class="${bodyClass}"></div>
+      <div id="${body.id}" class="${body.class}"></div>
     </div>
   `;
 }
@@ -568,11 +574,12 @@ function addWidget(type) {
 
 async function persistAndRerenderLayout() {
   renderWidgetsRoot();
-  // Cached stat/chart/connector data reapplies instantly via
-  // applyCachedMetrics() inside renderWidgetsRoot(); these two also cover a
-  // freshly-added chart/connector widget, which has no cached data yet.
+  // Cached stat/chart/connector/creative data reapplies instantly via
+  // applyCachedMetrics() inside renderWidgetsRoot(); these also cover a
+  // freshly-added widget, which has no cached data yet.
   await refreshMetrics();
   await refreshConnectorHealth();
+  await refreshCreativePerformance();
   try {
     await api("/dashboard/layout", { method: "PUT", body: { widgets: state.dashboardLayout } });
   } catch (err) {
@@ -584,13 +591,17 @@ function applyCachedMetrics() {
   if (state.lastSummary) applyStatWidgets(state.lastSummary, state.lastPrevSummary);
   if (state.lastDaily) renderChart(state.lastDaily);
   if (state.lastConnectorHealth) renderConnectorGrid(state.lastConnectorHealth);
+  if (state.lastCreatives) renderCreativeTable(state.lastCreatives);
 }
 
 // ---------------------------------------------------------------------------
 // Metrics
 // ---------------------------------------------------------------------------
 
-document.getElementById("range-select").addEventListener("change", refreshMetrics);
+document.getElementById("range-select").addEventListener("change", () => {
+  refreshMetrics();
+  refreshCreativePerformance();
+});
 
 function dateRange() {
   const days = Number(document.getElementById("range-select").value);
@@ -802,6 +813,71 @@ function renderConnectorGrid(health) {
       `;
     })
     .join("");
+}
+
+// ---------------------------------------------------------------------------
+// Creative performance (ad-level: spend/CTR/CPC/CPM per creative, ranked)
+// ---------------------------------------------------------------------------
+
+const PLATFORM_LABELS = { meta: "Meta", google: "Google" };
+
+async function refreshCreativePerformance() {
+  // creative_performance widget not on the current layout — don't even fetch.
+  if (!document.getElementById("creative-performance-table")) return;
+  const { start, end } = dateRange();
+  const qs = `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+  const rows = await api(`/stores/${state.activeStoreId}/metrics/creatives?${qs}`);
+  state.lastCreatives = rows;
+  renderCreativeTable(rows);
+}
+
+function renderCreativeTable(rows) {
+  const container = document.getElementById("creative-performance-table");
+  if (!container) return;
+  if (!rows.length) {
+    container.innerHTML = '<div class="chart-empty">Todavía no hay datos de creativos en este rango.</div>';
+    return;
+  }
+
+  // Highlight the best CTR in the range — the number a media buyer scans for first.
+  const bestCtr = Math.max(...rows.map((r) => r.ctr || 0));
+
+  const fmtOrDash = (v, formatter) => (v === null || v === undefined ? "—" : formatter(v));
+
+  container.innerHTML = `
+    <table class="creative-table">
+      <thead>
+        <tr>
+          <th>Creativo</th>
+          <th>Plataforma</th>
+          <th>Gasto</th>
+          <th>Impresiones</th>
+          <th>Clics</th>
+          <th>CTR</th>
+          <th>CPC</th>
+          <th>CPM</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map(
+            (r) => `
+          <tr>
+            <td class="creative-name" title="${r.campaign_name || ""}">${r.ad_name || r.ad_id}</td>
+            <td><span class="platform-badge platform-${r.platform}">${PLATFORM_LABELS[r.platform] || r.platform}</span></td>
+            <td>${fmtMoney(r.spend, state.activeStoreCurrency)}</td>
+            <td>${r.impressions.toLocaleString("es-AR")}</td>
+            <td>${r.clicks.toLocaleString("es-AR")}</td>
+            <td class="${r.ctr && r.ctr === bestCtr ? "creative-best" : ""}">${fmtOrDash(r.ctr, (v) => `${v}%`)}</td>
+            <td>${fmtOrDash(r.cpc, (v) => fmtMoney(v, state.activeStoreCurrency))}</td>
+            <td>${fmtOrDash(r.cpm, (v) => fmtMoney(v, state.activeStoreCurrency))}</td>
+          </tr>
+        `,
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
 }
 
 // ---------------------------------------------------------------------------
@@ -1067,6 +1143,35 @@ async function seedDemoData(storeId) {
     }
   }
   await api(`/stores/${storeId}/ad-spend`, { method: "POST", body: adSpend });
+
+  const creatives = [
+    { platform: "meta", ad_id: "demo-meta-1", ad_name: "Video — Testimonio cliente" },
+    { platform: "meta", ad_id: "demo-meta-2", ad_name: "Carrusel — Beneficios producto" },
+    { platform: "meta", ad_id: "demo-meta-3", ad_name: "Imagen — Oferta 20% OFF" },
+    { platform: "google", ad_id: "demo-google-1", ad_name: "Búsqueda — Marca" },
+    { platform: "google", ad_id: "demo-google-2", ad_name: "Búsqueda — Genérico" },
+  ];
+  const creativeRows = [];
+  for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
+    const day = new Date(now - dayOffset * 86400000);
+    day.setHours(0, 0, 0, 0);
+    for (const creative of creatives) {
+      const impressions = Math.floor(500 + Math.random() * 3000);
+      creativeRows.push({
+        time: day.toISOString(),
+        platform: creative.platform,
+        campaign_id: `${creative.platform}-demo-campaign`,
+        campaign_name: "Demo Campaign",
+        adset_id: "adset-1",
+        ad_id: creative.ad_id,
+        ad_name: creative.ad_name,
+        spend: Math.round((5 + Math.random() * 25) * 100) / 100,
+        impressions,
+        clicks: Math.floor(impressions * (0.005 + Math.random() * 0.04)),
+      });
+    }
+  }
+  await api(`/stores/${storeId}/creative-performance`, { method: "POST", body: creativeRows });
 }
 
 // ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@ WidgetType = Literal[
     "stat_real_profit",
     "chart_daily",
     "connector_status",
+    "creative_performance",
 ]
 
 DEFAULT_WIDGETS = [

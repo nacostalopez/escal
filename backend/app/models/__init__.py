@@ -1,5 +1,5 @@
 from app.models.audit import ConnectorStatus, OAuthState, ShopifyWebhookLog, TiendanubeWebhookLog, TokenRefreshAudit
-from app.models.hypertables import ad_spend, orders, pixel_events
+from app.models.hypertables import ad_spend, creative_performance, orders, pixel_events
 from app.models.relational import (
     Account,
     AccountInvite,
@@ -30,4 +30,5 @@ __all__ = [
     "orders",
     "pixel_events",
     "ad_spend",
+    "creative_performance",
 ]

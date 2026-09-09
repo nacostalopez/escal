@@ -11,7 +11,19 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.config import settings
 from app.logging_config import configure_logging
 from app.rate_limit import limiter
-from app.routes import accounts, ad_spend, auth, connectors, dashboard, metrics, orders, pixel_events, products, stores
+from app.routes import (
+    accounts,
+    ad_spend,
+    auth,
+    connectors,
+    creative_performance,
+    dashboard,
+    metrics,
+    orders,
+    pixel_events,
+    products,
+    stores,
+)
 
 settings.validate_production_ready()
 configure_logging(settings.log_level)
@@ -59,6 +71,7 @@ app.include_router(products.router)
 app.include_router(orders.router)
 app.include_router(pixel_events.router)
 app.include_router(ad_spend.router)
+app.include_router(creative_performance.router)
 app.include_router(metrics.router)
 app.include_router(connectors.router)
 app.include_router(connectors.health_router)

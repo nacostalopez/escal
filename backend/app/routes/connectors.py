@@ -1,4 +1,5 @@
 """Connector routes for OAuth handshakes, webhooks, and sync-status reporting."""
+
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -79,12 +80,14 @@ def _create_oauth_state(db: Session, store_id: UUID, provider: str) -> str:
     so the matching callback can prove it followed this store's own
     auth-url step rather than being a forged/replayed request."""
     raw_token = create_oauth_state_token()
-    db.add(OAuthState(
-        store_id=store_id,
-        provider=provider,
-        token_hash=hash_token(raw_token),
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=OAUTH_STATE_EXPIRE_MINUTES),
-    ))
+    db.add(
+        OAuthState(
+            store_id=store_id,
+            provider=provider,
+            token_hash=hash_token(raw_token),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=OAUTH_STATE_EXPIRE_MINUTES),
+        )
+    )
     db.commit()
     return raw_token
 
@@ -166,10 +169,14 @@ def shopify_oauth_callback(
         encrypted_token = encrypt_secret(token.access_token)
 
         # Check if credential already exists
-        existing = db.query(StoreCredential).filter_by(
-            store_id=store_id,
-            provider="shopify",
-        ).first()
+        existing = (
+            db.query(StoreCredential)
+            .filter_by(
+                store_id=store_id,
+                provider="shopify",
+            )
+            .first()
+        )
 
         if existing:
             existing.access_token = encrypted_token
@@ -241,10 +248,15 @@ async def shopify_webhook(
     # Validate signature
     connector = ShopifyConnector(str(store_id))
     if not connector.validate_webhook_signature(body_str, x_shopify_hmac_sha256):
-        db.add(ShopifyWebhookLog(
-            id=uuid4(), store_id=store_id, topic=topic,
-            signature_valid=False, status="rejected",
-        ))
+        db.add(
+            ShopifyWebhookLog(
+                id=uuid4(),
+                store_id=store_id,
+                topic=topic,
+                signature_valid=False,
+                status="rejected",
+            )
+        )
         db.commit()
         _upsert_connector_status(db, store_id, "shopify", synced=True, success=False, error="Invalid webhook signature")
         logger.warning(
@@ -278,10 +290,15 @@ async def shopify_webhook(
             )
             db.execute(stmt)
 
-        db.add(ShopifyWebhookLog(
-            id=uuid4(), store_id=store_id, topic=topic,
-            signature_valid=True, status="processed",
-        ))
+        db.add(
+            ShopifyWebhookLog(
+                id=uuid4(),
+                store_id=store_id,
+                topic=topic,
+                signature_valid=True,
+                status="processed",
+            )
+        )
         db.commit()
         _upsert_connector_status(db, store_id, "shopify", synced=True, success=True)
         logger.info(
@@ -292,10 +309,16 @@ async def shopify_webhook(
         return {"status": "received"}
     except Exception as e:
         db.rollback()
-        db.add(ShopifyWebhookLog(
-            id=uuid4(), store_id=store_id, topic=topic,
-            signature_valid=True, status="error", error_message=str(e),
-        ))
+        db.add(
+            ShopifyWebhookLog(
+                id=uuid4(),
+                store_id=store_id,
+                topic=topic,
+                signature_valid=True,
+                status="error",
+                error_message=str(e),
+            )
+        )
         db.commit()
         _upsert_connector_status(db, store_id, "shopify", synced=True, success=False, error=str(e))
         logger.error(
@@ -311,6 +334,7 @@ async def shopify_webhook(
 # ============================================================================
 # Meta (Facebook) Ads Connectors
 # ============================================================================
+
 
 @router.post("/meta/auth-url")
 def get_meta_auth_url(
@@ -348,10 +372,14 @@ def meta_oauth_callback(
 
         encrypted_token = encrypt_secret(token.access_token)
 
-        existing = db.query(StoreCredential).filter_by(
-            store_id=store_id,
-            provider="meta",
-        ).first()
+        existing = (
+            db.query(StoreCredential)
+            .filter_by(
+                store_id=store_id,
+                provider="meta",
+            )
+            .first()
+        )
 
         if existing:
             existing.access_token = encrypted_token
@@ -391,10 +419,14 @@ def sync_meta_ad_spend(
     store_id = store.id
 
     # Get Meta credentials
-    credential = db.query(StoreCredential).filter_by(
-        store_id=store_id,
-        provider="meta",
-    ).first()
+    credential = (
+        db.query(StoreCredential)
+        .filter_by(
+            store_id=store_id,
+            provider="meta",
+        )
+        .first()
+    )
 
     if not credential:
         raise HTTPException(
@@ -430,9 +462,63 @@ def sync_meta_ad_spend(
         )
 
 
+@router.post("/meta/sync-creative-performance")
+def sync_meta_creative_performance(
+    start_date: datetime = Query(...),
+    end_date: datetime = Query(...),
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
+    db: Session = Depends(get_db),
+):
+    """Sync ad-level (creative) performance from Meta."""
+    store_id = store.id
+
+    credential = (
+        db.query(StoreCredential)
+        .filter_by(
+            store_id=store_id,
+            provider="meta",
+        )
+        .first()
+    )
+
+    if not credential:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Meta credentials not configured for this store",
+        )
+
+    try:
+        access_token = decrypt_secret(credential.access_token)
+        connector = MetaConnector(str(store_id))
+
+        creative_records = connector.fetch_creative_performance(access_token, start_date, end_date)
+
+        from app.models import creative_performance as creative_performance_table
+
+        rows = [{"store_id": store_id, **record} for record in creative_records]
+        if rows:
+            db.execute(insert(creative_performance_table), rows)
+            db.commit()
+
+        _upsert_connector_status(db, store_id, "meta", synced=True, success=True)
+
+        return {
+            "status": "success",
+            "records_synced": len(rows),
+        }
+    except Exception as e:
+        _upsert_connector_status(db, store_id, "meta", synced=True, success=False, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to sync Meta creative performance: {str(e)}",
+        )
+
+
 # ============================================================================
 # Google Ads Connectors
 # ============================================================================
+
 
 @router.post("/google/auth-url")
 def get_google_auth_url(
@@ -471,10 +557,14 @@ def google_oauth_callback(
         encrypted_token = encrypt_secret(token.access_token)
         encrypted_refresh = encrypt_secret(token.refresh_token) if token.refresh_token else None
 
-        existing = db.query(StoreCredential).filter_by(
-            store_id=store_id,
-            provider="google",
-        ).first()
+        existing = (
+            db.query(StoreCredential)
+            .filter_by(
+                store_id=store_id,
+                provider="google",
+            )
+            .first()
+        )
 
         if existing:
             existing.access_token = encrypted_token
@@ -518,10 +608,14 @@ def sync_google_ad_spend(
     store_id = store.id
 
     # Get Google credentials
-    credential = db.query(StoreCredential).filter_by(
-        store_id=store_id,
-        provider="google",
-    ).first()
+    credential = (
+        db.query(StoreCredential)
+        .filter_by(
+            store_id=store_id,
+            provider="google",
+        )
+        .first()
+    )
 
     if not credential:
         raise HTTPException(
@@ -546,10 +640,15 @@ def sync_google_ad_spend(
                     db.add(TokenRefreshAudit(id=uuid4(), store_id=store_id, provider="google", success=True))
                     db.commit()
                 except Exception as refresh_error:
-                    db.add(TokenRefreshAudit(
-                        id=uuid4(), store_id=store_id, provider="google",
-                        success=False, error_message=str(refresh_error),
-                    ))
+                    db.add(
+                        TokenRefreshAudit(
+                            id=uuid4(),
+                            store_id=store_id,
+                            provider="google",
+                            success=False,
+                            error_message=str(refresh_error),
+                        )
+                    )
                     db.commit()
                     raise
 
@@ -578,9 +677,88 @@ def sync_google_ad_spend(
         )
 
 
+@router.post("/google/sync-creative-performance")
+def sync_google_creative_performance(
+    start_date: datetime = Query(...),
+    end_date: datetime = Query(...),
+    store: Store = Depends(get_owned_store),
+    _: User = Depends(require_role("owner", "admin")),
+    db: Session = Depends(get_db),
+):
+    """Sync ad-level (creative) performance from Google Ads."""
+    store_id = store.id
+
+    credential = (
+        db.query(StoreCredential)
+        .filter_by(
+            store_id=store_id,
+            provider="google",
+        )
+        .first()
+    )
+
+    if not credential:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google credentials not configured for this store",
+        )
+
+    try:
+        access_token = decrypt_secret(credential.access_token)
+
+        if credential.expires_at and datetime.utcnow() > credential.expires_at:
+            refresh_token = decrypt_secret(credential.refresh_token) if credential.refresh_token else None
+            if refresh_token:
+                try:
+                    connector = GoogleAdsConnector(str(store_id))
+                    new_token = connector.refresh_access_token(refresh_token)
+                    access_token = new_token.access_token
+                    credential.access_token = encrypt_secret(access_token)
+                    credential.expires_at = new_token.expires_at
+                    db.commit()
+                    db.add(TokenRefreshAudit(id=uuid4(), store_id=store_id, provider="google", success=True))
+                    db.commit()
+                except Exception as refresh_error:
+                    db.add(
+                        TokenRefreshAudit(
+                            id=uuid4(),
+                            store_id=store_id,
+                            provider="google",
+                            success=False,
+                            error_message=str(refresh_error),
+                        )
+                    )
+                    db.commit()
+                    raise
+
+        connector = GoogleAdsConnector(str(store_id))
+        creative_records = connector.fetch_creative_performance(access_token, start_date, end_date)
+
+        from app.models import creative_performance as creative_performance_table
+
+        rows = [{"store_id": store_id, **record} for record in creative_records]
+        if rows:
+            db.execute(insert(creative_performance_table), rows)
+            db.commit()
+
+        _upsert_connector_status(db, store_id, "google", synced=True, success=True)
+
+        return {
+            "status": "success",
+            "records_synced": len(rows),
+        }
+    except Exception as e:
+        _upsert_connector_status(db, store_id, "google", synced=True, success=False, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to sync Google creative performance: {str(e)}",
+        )
+
+
 # ============================================================================
 # Tiendanube Connectors
 # ============================================================================
+
 
 @router.post("/tiendanube/auth-url")
 def get_tiendanube_auth_url(
@@ -617,10 +795,14 @@ def tiendanube_oauth_callback(
 
         encrypted_token = encrypt_secret(token.access_token)
 
-        existing = db.query(StoreCredential).filter_by(
-            store_id=store_id,
-            provider="tiendanube",
-        ).first()
+        existing = (
+            db.query(StoreCredential)
+            .filter_by(
+                store_id=store_id,
+                provider="tiendanube",
+            )
+            .first()
+        )
 
         if existing:
             existing.access_token = encrypted_token
@@ -688,12 +870,19 @@ async def tiendanube_webhook(
     # Validate signature
     connector = TiendanubeConnector(str(store_id))
     if not connector.validate_webhook_signature(body_str, x_linkedstore_hmac_sha256):
-        db.add(TiendanubeWebhookLog(
-            id=uuid4(), store_id=store_id, topic=topic,
-            signature_valid=False, status="rejected",
-        ))
+        db.add(
+            TiendanubeWebhookLog(
+                id=uuid4(),
+                store_id=store_id,
+                topic=topic,
+                signature_valid=False,
+                status="rejected",
+            )
+        )
         db.commit()
-        _upsert_connector_status(db, store_id, "tiendanube", synced=True, success=False, error="Invalid webhook signature")
+        _upsert_connector_status(
+            db, store_id, "tiendanube", synced=True, success=False, error="Invalid webhook signature"
+        )
         logger.warning(
             "tiendanube_webhook_rejected",
             extra={"store_id": str(store_id), "topic": topic, "reason": "invalid_signature"},
@@ -725,10 +914,15 @@ async def tiendanube_webhook(
             )
             db.execute(stmt)
 
-        db.add(TiendanubeWebhookLog(
-            id=uuid4(), store_id=store_id, topic=topic,
-            signature_valid=True, status="processed",
-        ))
+        db.add(
+            TiendanubeWebhookLog(
+                id=uuid4(),
+                store_id=store_id,
+                topic=topic,
+                signature_valid=True,
+                status="processed",
+            )
+        )
         db.commit()
         _upsert_connector_status(db, store_id, "tiendanube", synced=True, success=True)
         logger.info(
@@ -739,10 +933,16 @@ async def tiendanube_webhook(
         return {"status": "received"}
     except Exception as e:
         db.rollback()
-        db.add(TiendanubeWebhookLog(
-            id=uuid4(), store_id=store_id, topic=topic,
-            signature_valid=True, status="error", error_message=str(e),
-        ))
+        db.add(
+            TiendanubeWebhookLog(
+                id=uuid4(),
+                store_id=store_id,
+                topic=topic,
+                signature_valid=True,
+                status="error",
+                error_message=str(e),
+            )
+        )
         db.commit()
         _upsert_connector_status(db, store_id, "tiendanube", synced=True, success=False, error=str(e))
         logger.error(
@@ -758,6 +958,7 @@ async def tiendanube_webhook(
 # ============================================================================
 # MercadoPago Connectors
 # ============================================================================
+
 
 @router.post("/mercadopago/auth-url")
 def get_mercadopago_auth_url(
@@ -795,10 +996,14 @@ def mercadopago_oauth_callback(
         encrypted_token = encrypt_secret(token.access_token)
         encrypted_refresh = encrypt_secret(token.refresh_token) if token.refresh_token else None
 
-        existing = db.query(StoreCredential).filter_by(
-            store_id=store_id,
-            provider="mercadopago",
-        ).first()
+        existing = (
+            db.query(StoreCredential)
+            .filter_by(
+                store_id=store_id,
+                provider="mercadopago",
+            )
+            .first()
+        )
 
         if existing:
             existing.access_token = encrypted_token
@@ -844,10 +1049,14 @@ def sync_mercadopago_ad_spend(
     store_id = store.id
 
     # Get MercadoPago credentials
-    credential = db.query(StoreCredential).filter_by(
-        store_id=store_id,
-        provider="mercadopago",
-    ).first()
+    credential = (
+        db.query(StoreCredential)
+        .filter_by(
+            store_id=store_id,
+            provider="mercadopago",
+        )
+        .first()
+    )
 
     if not credential:
         raise HTTPException(
@@ -867,16 +1076,23 @@ def sync_mercadopago_ad_spend(
                     new_token = connector.refresh_access_token(refresh_token)
                     access_token = new_token.access_token
                     credential.access_token = encrypt_secret(access_token)
-                    credential.refresh_token = encrypt_secret(new_token.refresh_token) if new_token.refresh_token else None
+                    credential.refresh_token = (
+                        encrypt_secret(new_token.refresh_token) if new_token.refresh_token else None
+                    )
                     credential.expires_at = new_token.expires_at
                     db.commit()
                     db.add(TokenRefreshAudit(id=uuid4(), store_id=store_id, provider="mercadopago", success=True))
                     db.commit()
                 except Exception as refresh_error:
-                    db.add(TokenRefreshAudit(
-                        id=uuid4(), store_id=store_id, provider="mercadopago",
-                        success=False, error_message=str(refresh_error),
-                    ))
+                    db.add(
+                        TokenRefreshAudit(
+                            id=uuid4(),
+                            store_id=store_id,
+                            provider="mercadopago",
+                            success=False,
+                            error_message=str(refresh_error),
+                        )
+                    )
                     db.commit()
                     raise
 
@@ -908,6 +1124,7 @@ def sync_mercadopago_ad_spend(
 # ============================================================================
 # Sync-status reporting
 # ============================================================================
+
 
 @health_router.get("/health")
 def connector_health(

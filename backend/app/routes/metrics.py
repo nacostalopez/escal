@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_owned_store
 from app.models import Store
-from app.schemas.metrics import DailyMetricOut, MetricsSummaryOut
+from app.schemas.metrics import CreativeMetricOut, DailyMetricOut, MetricsSummaryOut
 
 router = APIRouter(prefix="/stores/{store_id}/metrics", tags=["metrics"])
 
@@ -74,6 +74,33 @@ DAILY_SQL = text(
 )
 
 
+# One row per ad (creative), summed across the range and ranked by spend —
+# what a media buyer scans first to decide what to scale or kill. MAX() on
+# the text columns is safe here since they're functionally dependent on
+# ad_id (a given ad doesn't change name/campaign mid-range in practice).
+CREATIVES_SQL = text(
+    """
+    SELECT
+        platform,
+        ad_id,
+        MAX(ad_name) AS ad_name,
+        MAX(campaign_name) AS campaign_name,
+        MAX(thumbnail_url) AS thumbnail_url,
+        SUM(spend) AS spend,
+        SUM(impressions) AS impressions,
+        SUM(clicks) AS clicks,
+        ROUND((SUM(clicks)::numeric / NULLIF(SUM(impressions), 0)) * 100, 2) AS ctr,
+        ROUND((SUM(spend) / NULLIF(SUM(clicks), 0))::numeric, 4) AS cpc,
+        ROUND((SUM(spend) / NULLIF(SUM(impressions), 0) * 1000)::numeric, 4) AS cpm
+    FROM creative_performance
+    WHERE store_id = :store_id
+      AND time BETWEEN :start AND :end
+    GROUP BY platform, ad_id
+    ORDER BY spend DESC
+    """
+)
+
+
 @router.get("/summary", response_model=MetricsSummaryOut)
 def metrics_summary(
     start: datetime = Query(...),
@@ -93,4 +120,15 @@ def metrics_daily(
     db: Session = Depends(get_db),
 ):
     rows = db.execute(DAILY_SQL, {"store_id": str(store.id), "start": start, "end": end}).mappings().all()
+    return rows
+
+
+@router.get("/creatives", response_model=list[CreativeMetricOut])
+def metrics_creatives(
+    start: datetime = Query(...),
+    end: datetime = Query(...),
+    store: Store = Depends(get_owned_store),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(CREATIVES_SQL, {"store_id": str(store.id), "start": start, "end": end}).mappings().all()
     return rows

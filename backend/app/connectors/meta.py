@@ -1,4 +1,5 @@
 """Meta (Facebook) Ads connector for ad spend tracking."""
+
 import hashlib
 import hmac
 import json
@@ -13,6 +14,7 @@ from app.connectors import BaseConnector, OAuthToken
 
 class MetaSettings(BaseSettings):
     """Meta-specific configuration."""
+
     meta_app_id: str = ""
     meta_app_secret: str = ""
     meta_redirect_uri: str = "http://localhost:3000/auth/meta/callback"
@@ -48,6 +50,7 @@ class MetaConnector(BaseConnector):
         }
 
         from urllib.parse import urlencode
+
         return f"https://www.facebook.com/{self.API_VERSION}/dialog/oauth?{urlencode(params)}"
 
     def exchange_auth_code(self, code: str, redirect_uri: str) -> OAuthToken:
@@ -74,7 +77,7 @@ class MetaConnector(BaseConnector):
 
     def validate_webhook_signature(self, body: str, signature: str) -> bool:
         """Validate webhook signature.
-        
+
         Meta sends X-Hub-Signature header with SHA1 HMAC.
         """
         expected = hmac.new(
@@ -87,7 +90,7 @@ class MetaConnector(BaseConnector):
 
     def process_webhook(self, event_type: str, data: dict) -> dict:
         """Process webhook event.
-        
+
         For ads, we typically receive:
         - campaign performance updates
         - billing events
@@ -106,13 +109,13 @@ class MetaConnector(BaseConnector):
         breakdown_by: str = "campaign",
     ) -> List[dict]:
         """Fetch ad spend data from Meta Ads API.
-        
+
         Args:
             access_token: Meta API access token
             start_date: Start date for data fetch
             end_date: End date for data fetch
             breakdown_by: "campaign", "adset", or "ad"
-            
+
         Returns:
             List of ad spend records
         """
@@ -123,23 +126,27 @@ class MetaConnector(BaseConnector):
 
         params = {
             "access_token": access_token,
-            "time_range": json.dumps({
-                "since": start_date.date().isoformat(),
-                "until": end_date.date().isoformat(),
-            }),
-            "fields": ",".join([
-                "campaign_id",
-                "campaign_name",
-                "adset_id",
-                "adset_name",
-                "ad_id",
-                "ad_name",
-                "spend",
-                "impressions",
-                "clicks",
-                "date_start",
-                "date_stop",
-            ]),
+            "time_range": json.dumps(
+                {
+                    "since": start_date.date().isoformat(),
+                    "until": end_date.date().isoformat(),
+                }
+            ),
+            "fields": ",".join(
+                [
+                    "campaign_id",
+                    "campaign_name",
+                    "adset_id",
+                    "adset_name",
+                    "ad_id",
+                    "ad_name",
+                    "spend",
+                    "impressions",
+                    "clicks",
+                    "date_start",
+                    "date_stop",
+                ]
+            ),
             "breakdowns": breakdown_by,
             "limit": 100,
         }
@@ -154,9 +161,7 @@ class MetaConnector(BaseConnector):
 
             for insight in data.get("data", []):
                 record = {
-                    "time": datetime.fromisoformat(
-                        insight.get("date_start", datetime.utcnow().isoformat())
-                    ),
+                    "time": datetime.fromisoformat(insight.get("date_start", datetime.utcnow().isoformat())),
                     "platform": "meta",
                     "campaign_id": str(insight.get("campaign_id", "")),
                     "campaign_name": insight.get("campaign_name", ""),
@@ -176,6 +181,83 @@ class MetaConnector(BaseConnector):
 
         return spend_records
 
+    def fetch_creative_performance(
+        self,
+        access_token: str,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> List[dict]:
+        """Ad-level (creative) breakdown for the creative_performance table.
+
+        Same Insights endpoint as fetch_ad_spend, requested at ad level
+        instead of aggregated to campaign. thumbnail_url isn't fetched yet —
+        Meta doesn't return it on Insights; getting it needs a separate
+        `/{ad_id}/adcreatives` call per ad, deliberately left for later
+        rather than adding N+1 API calls here.
+        """
+        if not self.ad_account_id:
+            raise ValueError("ad_account_id required for creative performance fetch")
+
+        url = f"{self.API_BASE}/{self.ad_account_id}/insights"
+
+        params = {
+            "access_token": access_token,
+            "time_range": json.dumps(
+                {
+                    "since": start_date.date().isoformat(),
+                    "until": end_date.date().isoformat(),
+                }
+            ),
+            "fields": ",".join(
+                [
+                    "campaign_id",
+                    "campaign_name",
+                    "adset_id",
+                    "ad_id",
+                    "ad_name",
+                    "spend",
+                    "impressions",
+                    "clicks",
+                    "date_start",
+                ]
+            ),
+            "level": "ad",
+            "limit": 100,
+        }
+
+        records = []
+
+        while url:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+
+            data = response.json()
+
+            for insight in data.get("data", []):
+                records.append(
+                    {
+                        "time": datetime.fromisoformat(insight.get("date_start", datetime.utcnow().isoformat())),
+                        "platform": "meta",
+                        "campaign_id": str(insight.get("campaign_id", "")),
+                        "campaign_name": insight.get("campaign_name", ""),
+                        "adset_id": str(insight.get("adset_id", "")),
+                        "ad_id": str(insight.get("ad_id", "")),
+                        "ad_name": insight.get("ad_name", ""),
+                        "thumbnail_url": None,
+                        "spend": float(insight.get("spend", 0)),
+                        "impressions": int(insight.get("impressions", 0)),
+                        "clicks": int(insight.get("clicks", 0)),
+                    }
+                )
+
+            paging = data.get("paging", {})
+            if "cursors" in paging and "after" in paging["cursors"]:
+                params["after"] = paging["cursors"]["after"]
+            else:
+                break
+
+        return records
+
     def fetch_historical_data(
         self,
         access_token: str,
@@ -183,6 +265,4 @@ class MetaConnector(BaseConnector):
         end_date: datetime,
     ) -> dict:
         """Fetch historical ad spend data."""
-        return {
-            "spend_records": self.fetch_ad_spend(access_token, start_date, end_date)
-        }
+        return {"spend_records": self.fetch_ad_spend(access_token, start_date, end_date)}

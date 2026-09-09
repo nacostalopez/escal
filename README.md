@@ -161,6 +161,25 @@ preference, not a data-access permission. Widget types are validated
 server-side (`WidgetType` in `app/schemas/dashboard.py`); an unknown type or
 a duplicate type in the same layout is rejected with `422`.
 
+### Creative analytics
+
+`ad_spend` tracks spend at campaign/adset level; `creative_performance` is a
+separate hypertable for the ad (creative) level — what a media buyer
+actually scans to decide what to scale or kill. Meta and Google only
+(Tiendanube/MercadoPago aren't creative-based ad platforms). `MetaConnector`
+and `GoogleAdsConnector` each get a `fetch_creative_performance()` alongside
+their existing `fetch_ad_spend()`, and the connector routes get a matching
+`.../sync-creative-performance` next to `.../sync-ad-spend`. Thumbnail
+images aren't fetched yet — both platforms need a separate per-creative API
+call to get them, deliberately left for later rather than adding N+1
+requests to every sync.
+
+`GET /stores/{id}/metrics/creatives?start=&end=` aggregates
+`creative_performance` by ad, sums spend/impressions/clicks over the range,
+computes CTR/CPC/CPM server-side, and ranks by spend descending — this is
+what the dashboard's "Performance por creativo" widget (add it via
+"Personalizar" — it's not in the default layout) renders as a table.
+
 ## API overview
 
 - `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
@@ -181,6 +200,8 @@ a duplicate type in the same layout is rejected with `422`.
 - `POST /stores/{id}/orders` (bulk ingest/upsert), `GET /stores/{id}/orders?start=&end=`
 - `POST /stores/{id}/pixel-events` (bulk ingest), `GET /stores/{id}/pixel-events?...`
 - `POST /stores/{id}/ad-spend` (bulk ingest), `GET /stores/{id}/ad-spend?...`
+- `POST /stores/{id}/creative-performance` (bulk ingest), `GET /stores/{id}/creative-performance?...`
+  — ad-level (Meta/Google only), separate from `ad_spend` since it's per-ad not per-campaign
 - `GET /stores/{id}/metrics/summary?start=&end=` — revenue, net profit, ad spend,
   real profit after ads, **true ROAS** (`net_profit / ad_spend` — net of discounts,
   shipping, gateway fees and COGS, not plain revenue/spend; reads live from
@@ -188,9 +209,12 @@ a duplicate type in the same layout is rejected with `422`.
 - `GET /stores/{id}/metrics/daily?start=&end=` — daily breakdown via the
   `daily_financial_summary` continuous aggregate (fast, but can lag up to ~1h
   behind since it refreshes on an hourly policy — see `db/init/004_continuous_aggregates.sql`)
+- `GET /stores/{id}/metrics/creatives?start=&end=` — one row per ad, summed
+  over the range and ranked by spend, with CTR/CPC/CPM computed server-side
+  (see "Creative analytics" below)
 - `GET/POST /connectors/{shopify,meta,google,tiendanube,mercadopago}/...` —
   OAuth handshake, ad-spend sync, and (Shopify/Tiendanube) order webhook per
-  provider — see `DEVELOPMENT.md`
+  provider; Meta/Google also get `.../sync-creative-performance` — see `DEVELOPMENT.md`
 - `GET /stores/{id}/connectors/health` — per-provider sync status
 
 All requests are logged as structured JSON (see `DEVELOPMENT.md`) and rate
@@ -210,14 +234,31 @@ The frontend (`frontend/`, plain HTML/CSS/JS, no build step) has been carried
 well past "just enough to see real numbers": ARAMAL brand system with light/
 dark mode, a Spanish (`vos`-register, es-AR-formatted) UI throughout, a
 user-configurable summary board (add/remove/reorder widgets, pick which stat
-is the 2x2 hero — see "Dashboard layout" below) with real period-over-period
-deltas, hover tooltips on the daily revenue-vs-spend chart, a full Equipo
-(team) screen for the invite/role/remove routes above (including a
-"Reenviar" action for a pending invite), an invite-link landing flow
-(`index.html?invite_token=...`), and a forgot/reset-password flow
+is the 2x2 hero, plus an opt-in creative-analytics table ranked by spend —
+see "Dashboard layout" and "Creative analytics" below) with real
+period-over-period deltas, hover tooltips on the daily revenue-vs-spend
+chart, a full Equipo (team) screen for the invite/role/remove routes above
+(including a "Reenviar" action for a pending invite), an invite-link landing
+flow (`index.html?invite_token=...`), and a forgot/reset-password flow
 (`index.html?reset_token=...`). Not yet built:
 
 - No password strength meter on the frontend.
+- No revenue/ROAS attribution down to the individual ad — creative
+  analytics currently shows each platform's own metrics (spend, CTR, CPC,
+  CPM), not net_profit or true ROAS per creative. `orders` only carries
+  `attribution_utm_source`/`attribution_utm_campaign`, nothing at ad/creative
+  granularity, so that would need a deeper attribution pipeline change.
+- No thumbnail images in the creative-performance table (see "Creative
+  analytics" below for why).
+- Pre-existing, unrelated to any feature above: `MetaConnector`/
+  `GoogleAdsConnector` are constructed without an `ad_account_id`/
+  `customer_id` in `routes/connectors.py`'s sync routes (both `sync-ad-spend`
+  and the new `sync-creative-performance`), so calling them against a real
+  connected account 400s with "ad_account_id required" /
+  "customer_id required" — `StoreCredential.provider_account_id` exists and
+  looks like where that value belongs, but nothing threads it through yet.
+  Doesn't block anything backed by direct ingestion (bulk POST, demo seed
+  data) since that bypasses these sync routes entirely.
 - `tests/test_auth.py::TestAuthenticatedRequests::test_get_current_user_no_token`
   expects `403` from `HTTPBearer` with no Authorization header, but the
   installed fastapi/starlette version returns `401` (pre-existing, unrelated
