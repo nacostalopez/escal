@@ -679,10 +679,11 @@ function renderInvites(invites) {
       <div class="invite-row">
         <div>
           <div class="member-email">${inv.email}</div>
-          <div class="member-meta">Invitado el ${fmtDate(inv.created_at)}</div>
+          <div class="member-meta">Invitado el ${fmtDate(inv.created_at)} · Vence el ${fmtDate(inv.expires_at)}</div>
         </div>
         <span class="role-badge ${inv.role}">${inv.role}</span>
         <div class="member-actions">
+          <button type="button" class="link-btn" data-resend-invite="${inv.id}">Reenviar</button>
           <button type="button" class="link-danger" data-revoke-invite="${inv.id}">Revocar</button>
         </div>
       </div>
@@ -691,6 +692,9 @@ function renderInvites(invites) {
 
   list.querySelectorAll("[data-revoke-invite]").forEach((btn) => {
     btn.addEventListener("click", () => revokeInvite(btn.dataset.revokeInvite));
+  });
+  list.querySelectorAll("[data-resend-invite]").forEach((btn) => {
+    btn.addEventListener("click", () => resendInvite(btn.dataset.resendInvite, btn));
   });
 }
 
@@ -721,6 +725,18 @@ async function revokeInvite(inviteId) {
     alert(err.message);
   }
   await loadMembers();
+}
+
+async function resendInvite(inviteId, btn) {
+  btn.disabled = true;
+  try {
+    await api(`/accounts/invites/${inviteId}/resend`, { method: "POST" });
+    btn.textContent = "Reenviada ✓";
+    setTimeout(() => loadMembers(), 1200);
+  } catch (err) {
+    alert(err.message);
+    btn.disabled = false;
+  }
 }
 
 const inviteModal = document.getElementById("invite-modal");

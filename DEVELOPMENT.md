@@ -424,12 +424,20 @@ Gmail, SendGrid/Mailgun/SES's SMTP endpoints, or any other SMTP server. With
 email at `INFO` instead of connecting anywhere, so nothing here needs real
 credentials for local dev. Two callers today:
 
-- `routes/accounts.py::create_invite` emails the invitee an accept link
+- `routes/accounts.py::create_invite` (and `resend_invite`, sharing the
+  `_send_invite_email` helper) emails the invitee an accept link
   (`{FRONTEND_URL}/index.html?invite_token=...`) and the raw token, and
-  still returns the raw token in the API response too as a fallback. The
-  frontend's auth view reads `invite_token` off the URL on load and shows a
-  dedicated "accept invite" form (password + confirm) that posts to
-  `/accounts/invites/accept`.
+  still returns the raw token in the API response too as a fallback. Resend
+  mints a fresh token and a fresh `INVITE_EXPIRY_DAYS` expiry on the same
+  `AccountInvite` row (not a new row) — the old token stops working the
+  moment a resend happens, since only the row's current `token_hash` is
+  ever looked up. Only a `status == "pending"` invite can be resent; an
+  expired-but-unaccepted invite is still `pending` (nothing transitions it
+  to an "expired" status), so it's still resendable. The frontend's auth
+  view reads `invite_token` off the URL on load and shows a dedicated
+  "accept invite" form (password + confirm) that posts to
+  `/accounts/invites/accept`; the Equipo screen's pending-invites list has a
+  "Reenviar" action next to "Revocar".
 - `routes/auth.py::forgot_password` emails a reset link
   (`{FRONTEND_URL}/index.html?reset_token=...`) and the raw token — but,
   unlike invites, never echoes the token in the API response (the endpoint's
@@ -441,6 +449,18 @@ credentials for local dev. Two callers today:
 Both send calls are wrapped the same way — a failure is caught and logged,
 never raised, since email delivery is best-effort and (for invites) the
 token in the response is still a usable fallback.
+
+**Running this for real under `docker compose`:** `docker-compose.yml`'s
+`backend` service only injects the env vars it explicitly lists in its
+`environment:` block — it does not pass through arbitrary host env vars, so
+setting `SMTP_HOST` etc. in `backend/.env` does nothing for the
+containerized backend (that file isn't even mounted into the container).
+`FRONTEND_URL` and `SMTP_*` need to be forwarded there explicitly (as
+`JWT_SECRET` and `CREDENTIALS_ENCRYPTION_KEY` already were) and set in a
+**root-level** `.env`, which is what Compose itself reads for `${VAR}`
+substitution in `docker-compose.yml`. After changing them, `docker compose
+up -d backend` (not just `restart`) is needed to recreate the container
+with the new environment.
 
 ### Rate Limiting
 
@@ -603,4 +623,5 @@ The `sync_google_ad_spend` endpoint automatically refreshes expired tokens.
     Spanish localization, bento dashboard, team management screen)
 14. ✅ Invite-link landing flow + forgot/reset-password flow on the frontend
 15. ✅ Hover tooltips on the daily revenue-vs-spend chart
-16. ⏳ Password strength meter, "resend invite" action
+16. ✅ "Resend invite" action (fresh token + expiry, Equipo screen)
+17. ⏳ Password strength meter

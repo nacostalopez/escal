@@ -5,6 +5,7 @@ role's auth header and assert the expected status code. Ownership (cross
 -account access) is covered separately in test_ownership.py — these tests
 are all same-account, different-role.
 """
+
 from uuid import uuid4
 
 import pytest
@@ -220,6 +221,62 @@ class TestInviteFlow:
             json={"token": token, "password": "somepassword123"},
         )
         assert accept_response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_resend_issues_a_new_token_that_works_and_invalidates_the_old_one(self, client, auth_header):
+        create_response = client.post(
+            "/accounts/invites",
+            headers=auth_header,
+            json={"email": "resend-me@example.com", "role": "viewer"},
+        )
+        invite_id = create_response.json()["id"]
+        original_token = create_response.json()["token"]
+
+        resend_response = client.post(f"/accounts/invites/{invite_id}/resend", headers=auth_header)
+        assert resend_response.status_code == status.HTTP_200_OK
+        new_token = resend_response.json()["token"]
+        assert new_token != original_token
+
+        old_token_attempt = client.post(
+            "/accounts/invites/accept",
+            json={"token": original_token, "password": "somepassword123"},
+        )
+        assert old_token_attempt.status_code == status.HTTP_400_BAD_REQUEST
+
+        new_token_attempt = client.post(
+            "/accounts/invites/accept",
+            json={"token": new_token, "password": "somepassword123"},
+        )
+        assert new_token_attempt.status_code == status.HTTP_200_OK
+
+    def test_admin_cannot_resend_invite(self, client, auth_header, admin_auth_header):
+        create_response = client.post(
+            "/accounts/invites",
+            headers=auth_header,
+            json={"email": "admin-cant-resend@example.com", "role": "viewer"},
+        )
+        invite_id = create_response.json()["id"]
+
+        response = client.post(f"/accounts/invites/{invite_id}/resend", headers=admin_auth_header)
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_resend_revoked_invite_rejected(self, client, auth_header):
+        create_response = client.post(
+            "/accounts/invites",
+            headers=auth_header,
+            json={"email": "revoked-resend@example.com", "role": "viewer"},
+        )
+        invite_id = create_response.json()["id"]
+        client.delete(f"/accounts/invites/{invite_id}", headers=auth_header)
+
+        response = client.post(f"/accounts/invites/{invite_id}/resend", headers=auth_header)
+        assert response.status_code == status.HTTP_409_CONFLICT
+
+    def test_resend_unknown_invite_404s(self, client, auth_header):
+        response = client.post(
+            "/accounts/invites/00000000-0000-0000-0000-000000000000/resend",
+            headers=auth_header,
+        )
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.db

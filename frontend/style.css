@@ -288,6 +288,7 @@ a:hover { text-decoration: underline; }
   padding: 0;
   color: var(--primary);
   font-size: 12.5px;
+  font-family: inherit;
   cursor: pointer;
   text-decoration: underline;
 }

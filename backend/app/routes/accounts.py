@@ -29,6 +29,28 @@ logger = logging.getLogger("escal.accounts")
 INVITE_EXPIRY_DAYS = 7
 
 
+def _send_invite_email(invite: AccountInvite, inviter: User, raw_token: str, *, reminder: bool = False) -> None:
+    """Shared by create_invite and resend_invite — a send failure is caught
+    and logged, never raised, since the raw token in the API response is
+    still a usable fallback for the caller."""
+    invite_url = f"{settings.frontend_url}/index.html?invite_token={raw_token}"
+    subject_prefix = "Reminder: y" if reminder else "Y"
+    try:
+        send_email(
+            to=invite.email,
+            subject=f"{subject_prefix}ou've been invited to {inviter.account.name} on Escal",
+            body=(
+                f"{inviter.email} invited you to join {inviter.account.name} "
+                f"on Escal as {invite.role}.\n\n"
+                f"Accept your invite: {invite_url}\n\n"
+                f"Or use this token directly: {raw_token}\n\n"
+                f"This invite expires in {INVITE_EXPIRY_DAYS} days."
+            ),
+        )
+    except Exception:
+        logger.exception("invite_email_send_failed", extra={"invite_id": str(invite.id), "email": invite.email})
+
+
 @router.get("/me", response_model=AccountOut)
 def get_my_account(current_user: User = Depends(get_current_user)):
     return current_user.account
@@ -39,12 +61,7 @@ def list_members(
     current_user: User = Depends(require_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
-    return (
-        db.query(User)
-        .filter(User.account_id == current_user.account_id)
-        .order_by(User.created_at.asc())
-        .all()
-    )
+    return db.query(User).filter(User.account_id == current_user.account_id).order_by(User.created_at.asc()).all()
 
 
 @router.post("/invites", response_model=InviteOut, status_code=201)
@@ -56,11 +73,15 @@ def create_invite(
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
-    existing_pending = db.query(AccountInvite).filter_by(
-        account_id=current_user.account_id,
-        email=payload.email,
-        status="pending",
-    ).first()
+    existing_pending = (
+        db.query(AccountInvite)
+        .filter_by(
+            account_id=current_user.account_id,
+            email=payload.email,
+            status="pending",
+        )
+        .first()
+    )
     if existing_pending:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An invite to this email is already pending")
 
@@ -79,21 +100,36 @@ def create_invite(
     db.commit()
     db.refresh(invite)
 
-    invite_url = f"{settings.frontend_url}/index.html?invite_token={raw_token}"
-    try:
-        send_email(
-            to=payload.email,
-            subject=f"You've been invited to {current_user.account.name} on Escal",
-            body=(
-                f"{current_user.email} invited you to join {current_user.account.name} "
-                f"on Escal as {payload.role}.\n\n"
-                f"Accept your invite: {invite_url}\n\n"
-                f"Or use this token directly: {raw_token}\n\n"
-                f"This invite expires in {INVITE_EXPIRY_DAYS} days."
-            ),
-        )
-    except Exception:
-        logger.exception("invite_email_send_failed", extra={"invite_id": str(invite.id), "email": payload.email})
+    _send_invite_email(invite, current_user, raw_token)
+
+    result = InviteOut.model_validate(invite)
+    result.token = raw_token
+    return result
+
+
+@router.post("/invites/{invite_id}/resend", response_model=InviteOut)
+def resend_invite(
+    invite_id: UUID,
+    current_user: User = Depends(require_role("owner")),
+    db: Session = Depends(get_db),
+):
+    """Re-sends the invite email with a fresh token and a fresh expiry —
+    covers both "I lost the email" and "it expired before I opened it"
+    (an expired invite's status stays 'pending' until accepted or revoked,
+    so it's still resendable)."""
+    invite = db.get(AccountInvite, invite_id)
+    if not invite or invite.account_id != current_user.account_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found")
+    if invite.status != "pending":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only pending invites can be resent")
+
+    raw_token = secrets.token_urlsafe(32)
+    invite.token_hash = hash_token(raw_token)
+    invite.expires_at = datetime.now(timezone.utc) + timedelta(days=INVITE_EXPIRY_DAYS)
+    db.commit()
+    db.refresh(invite)
+
+    _send_invite_email(invite, current_user, raw_token, reminder=True)
 
     result = InviteOut.model_validate(invite)
     result.token = raw_token
@@ -168,9 +204,15 @@ def update_member_role(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
     if member.role == "owner" and payload.role != "owner":
-        remaining_owners = db.query(User).filter(
-            User.account_id == current_user.account_id, User.role == "owner", User.id != member.id,
-        ).count()
+        remaining_owners = (
+            db.query(User)
+            .filter(
+                User.account_id == current_user.account_id,
+                User.role == "owner",
+                User.id != member.id,
+            )
+            .count()
+        )
         if remaining_owners == 0:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot demote the last owner")
 
@@ -194,14 +236,21 @@ def remove_member(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot remove yourself")
 
     if member.role == "owner":
-        remaining_owners = db.query(User).filter(
-            User.account_id == current_user.account_id, User.role == "owner", User.id != member.id,
-        ).count()
+        remaining_owners = (
+            db.query(User)
+            .filter(
+                User.account_id == current_user.account_id,
+                User.role == "owner",
+                User.id != member.id,
+            )
+            .count()
+        )
         if remaining_owners == 0:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot remove the last owner")
 
     db.query(RefreshToken).filter(
-        RefreshToken.user_id == member.id, RefreshToken.revoked_at.is_(None),
+        RefreshToken.user_id == member.id,
+        RefreshToken.revoked_at.is_(None),
     ).update({"revoked_at": datetime.now(timezone.utc)})
 
     db.delete(member)

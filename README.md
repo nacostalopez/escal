@@ -143,6 +143,7 @@ beyond local dev — see `.env.example`.
   (single-use token, revokes existing refresh tokens, logs the caller back in)
 - `GET /accounts/me`, `GET /accounts/members`
 - `POST /accounts/invites`, `GET /accounts/invites`, `DELETE /accounts/invites/{id}`,
+  `POST /accounts/invites/{id}/resend` (fresh token + expiry, same email),
   `POST /accounts/invites/accept` — owner-only except accept
 - `PATCH /accounts/members/{id}/role`, `DELETE /accounts/members/{id}` — owner-only
 - `POST /stores`, `GET /stores`, `GET /stores/{id}`,
@@ -181,12 +182,17 @@ well past "just enough to see real numbers": ARAMAL brand system with light/
 dark mode, a Spanish (`vos`-register, es-AR-formatted) UI throughout, a
 bento-grid dashboard with real period-over-period deltas, hover tooltips on
 the daily revenue-vs-spend chart, a full Equipo (team) screen for the invite/
-role/remove routes above, an invite-link landing flow
-(`index.html?invite_token=...`), and a forgot/reset-password flow
-(`index.html?reset_token=...`). Not yet built:
+role/remove routes above (including a "Reenviar" action for a pending
+invite), an invite-link landing flow (`index.html?invite_token=...`), and a
+forgot/reset-password flow (`index.html?reset_token=...`). Not yet built:
 
-- No password strength meter or "resend invite" action on the frontend.
+- No password strength meter on the frontend.
 - `tests/test_auth.py::TestAuthenticatedRequests::test_get_current_user_no_token`
   expects `403` from `HTTPBearer` with no Authorization header, but the
   installed fastapi/starlette version returns `401` (pre-existing, unrelated
   to any feature above).
+
+Note for `docker compose` users: `FRONTEND_URL` and `SMTP_*` must be set in a
+root-level `.env` (not `backend/.env`) — `docker-compose.yml`'s `backend`
+service only forwards env vars it explicitly lists, and a root `.env` is
+what Compose itself reads for `${VAR}` substitution in that file.
