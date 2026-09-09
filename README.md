@@ -75,6 +75,27 @@ curl -X POST localhost:8000/accounts/invites/accept \
 # => {"access_token": "...", "refresh_token": "...", "token_type": "bearer"}
 ```
 
+### Password reset
+
+```bash
+# Always returns the same generic message, whether or not the email is
+# registered, so the response can't be used to enumerate accounts. With no
+# SMTP configured, the reset link/token is logged instead of emailed.
+curl -X POST localhost:8000/auth/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{"email": "me@example.com"}'
+# => {"message": "If that email is registered, we've sent a password reset link."}
+
+curl -X POST localhost:8000/auth/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{"token": "<token from the email>", "password": "at-least-8-chars"}'
+# => {"access_token": "...", "refresh_token": "...", "token_type": "bearer"}
+# The token is single-use and expires after 60 minutes; on success every
+# existing refresh token for the account is revoked (other devices stay
+# logged in only until their access token naturally expires) and the caller
+# is logged back in with a fresh token pair.
+```
+
 Role is read fresh from the database on every request (not baked into the
 JWT), so a role change or member removal takes effect on the very next
 request rather than waiting out the access token's lifetime.
@@ -118,6 +139,8 @@ beyond local dev — see `.env.example`.
 
 - `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - `POST /auth/refresh` (rotates a refresh token), `POST /auth/logout` (revokes one)
+- `POST /auth/forgot-password` (always a generic response), `POST /auth/reset-password`
+  (single-use token, revokes existing refresh tokens, logs the caller back in)
 - `GET /accounts/me`, `GET /accounts/members`
 - `POST /accounts/invites`, `GET /accounts/invites`, `DELETE /accounts/invites/{id}`,
   `POST /accounts/invites/accept` — owner-only except accept
@@ -147,14 +170,23 @@ exceeding a limit returns `429`.
 ## Status / next steps
 
 Schema, ingestion, profit/ROAS math, auth/credential-encryption,
-Shopify/Meta/Google/Tiendanube/MercadoPago connectors, CI, a first frontend,
-structured logging, rate limiting, env-var validation, webhook e2e tests,
-multi-user accounts with Owner/Admin/Viewer roles, revocable refresh tokens,
-invite emails (via SMTP, configurable through env vars), and transparent
-frontend token refresh are done. Not yet built:
+Shopify/Meta/Google/Tiendanube/MercadoPago connectors, CI, structured
+logging, rate limiting, env-var validation, webhook e2e tests, multi-user
+accounts with Owner/Admin/Viewer roles, revocable refresh tokens, invite and
+password-reset emails (via SMTP, configurable through env vars), and
+transparent frontend token refresh are done.
 
-- The frontend is intentionally minimal (`frontend/`, no build step) — fine
-  for seeing real numbers locally, not meant as a finished product design,
-  and doesn't yet have UI for the member/invite management routes above (an
-  invite email's link points at `{FRONTEND_URL}/index.html?invite_token=...`,
-  which the current frontend doesn't read yet)
+The frontend (`frontend/`, plain HTML/CSS/JS, no build step) has been carried
+well past "just enough to see real numbers": ARAMAL brand system with light/
+dark mode, a Spanish (`vos`-register, es-AR-formatted) UI throughout, a
+bento-grid dashboard with real period-over-period deltas, hover tooltips on
+the daily revenue-vs-spend chart, a full Equipo (team) screen for the invite/
+role/remove routes above, an invite-link landing flow
+(`index.html?invite_token=...`), and a forgot/reset-password flow
+(`index.html?reset_token=...`). Not yet built:
+
+- No password strength meter or "resend invite" action on the frontend.
+- `tests/test_auth.py::TestAuthenticatedRequests::test_get_current_user_no_token`
+  expects `403` from `HTTPBearer` with no Authorization header, but the
+  installed fastapi/starlette version returns `401` (pre-existing, unrelated
+  to any feature above).

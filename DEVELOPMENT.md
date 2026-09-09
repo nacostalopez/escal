@@ -405,8 +405,9 @@ visible in the response that issued it.
 - `POST /auth/logout` revokes one refresh token (its owner must match the
   caller's `current_user.id`, else 404 — same no-leak pattern as
   `get_owned_store`). There's no "logout everywhere" endpoint yet, but
-  `routes/accounts.py::remove_member` bulk-revokes every active refresh
-  token for a removed member before deleting their `User` row.
+  `routes/accounts.py::remove_member` and `routes/auth.py::reset_password`
+  both bulk-revoke every active refresh token for the affected user (member
+  removal, and a successful password reset, respectively) before returning.
 - Role changes and member removal don't need any refresh-token-specific
   handling to take effect immediately: `require_role()` already re-reads
   `role` from the DB on every request rather than trusting a JWT claim, so a
@@ -421,14 +422,25 @@ visible in the response that issued it.
 Gmail, SendGrid/Mailgun/SES's SMTP endpoints, or any other SMTP server. With
 `SMTP_HOST` unset (the default, and always true in tests/CI) it logs the
 email at `INFO` instead of connecting anywhere, so nothing here needs real
-credentials for local dev. `routes/accounts.py::create_invite` is the only
-caller today — it emails the invitee an accept link
-(`{FRONTEND_URL}/index.html?invite_token=...`) and the raw token, and
-still returns the raw token in the API response too as a fallback (the
-frontend has no page reading that query param yet). A send failure is
-caught and logged, never raised — invite creation must not fail just because
-SMTP is unreachable, since the token in the response is still a usable
-fallback.
+credentials for local dev. Two callers today:
+
+- `routes/accounts.py::create_invite` emails the invitee an accept link
+  (`{FRONTEND_URL}/index.html?invite_token=...`) and the raw token, and
+  still returns the raw token in the API response too as a fallback. The
+  frontend's auth view reads `invite_token` off the URL on load and shows a
+  dedicated "accept invite" form (password + confirm) that posts to
+  `/accounts/invites/accept`.
+- `routes/auth.py::forgot_password` emails a reset link
+  (`{FRONTEND_URL}/index.html?reset_token=...`) and the raw token — but,
+  unlike invites, never echoes the token in the API response (the endpoint's
+  response is identical whether or not the email is registered, to avoid
+  leaking account existence). The frontend reads `reset_token` off the URL
+  the same way and shows a "new password" form that posts to
+  `/auth/reset-password`.
+
+Both send calls are wrapped the same way — a failure is caught and logged,
+never raised, since email delivery is best-effort and (for invites) the
+token in the response is still a usable fallback.
 
 ### Rate Limiting
 
@@ -587,4 +599,8 @@ The `sync_google_ad_spend` endpoint automatically refreshes expired tokens.
 10. ✅ Tiendanube connector (webhook-based, same pattern as Shopify)
 11. ✅ MercadoPago connector (pull-based, same pattern as Meta/Google)
 12. ✅ Multi-user accounts / Owner-Admin-Viewer role-based permissions
-13. ⏳ Real frontend design pass (current one is functional only)
+13. ✅ Real frontend design pass (ARAMAL brand system, light/dark mode,
+    Spanish localization, bento dashboard, team management screen)
+14. ✅ Invite-link landing flow + forgot/reset-password flow on the frontend
+15. ✅ Hover tooltips on the daily revenue-vs-spend chart
+16. ⏳ Password strength meter, "resend invite" action

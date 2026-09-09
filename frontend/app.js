@@ -98,19 +98,45 @@ const authView = document.getElementById("auth-view");
 const dashboardView = document.getElementById("dashboard-view");
 const topbarAccount = document.getElementById("topbar-account");
 const authError = document.getElementById("auth-error");
+const authSuccess = document.getElementById("auth-success");
 
-document.getElementById("tab-login").addEventListener("click", () => switchAuthTab("login"));
-document.getElementById("tab-register").addEventListener("click", () => switchAuthTab("register"));
+document.getElementById("tab-login").addEventListener("click", () => showAuthMode("login"));
+document.getElementById("tab-register").addEventListener("click", () => showAuthMode("register"));
 
-function switchAuthTab(tab) {
-  const isLogin = tab === "login";
-  document.getElementById("tab-login").classList.toggle("active", isLogin);
-  document.getElementById("tab-register").classList.toggle("active", !isLogin);
-  document.getElementById("login-form").hidden = !isLogin;
-  document.getElementById("register-form").hidden = isLogin;
-  document.getElementById("login-heading").hidden = !isLogin;
-  document.getElementById("register-heading").hidden = isLogin;
+// Auth view has 5 mutually exclusive modes: normal login/register (tabbed),
+// plus 3 single-purpose flows reached via a link or a URL token — forgot
+// (request a reset email), reset (consume a reset_token), invite (consume
+// an invite_token). Each maps to one form + one heading; only login/register
+// show the tab bar.
+const AUTH_MODES = {
+  login: { form: "login-form", heading: "login-heading" },
+  register: { form: "register-form", heading: "register-heading" },
+  forgot: { form: "forgot-password-form", heading: "forgot-heading" },
+  reset: { form: "reset-password-form", heading: "reset-heading" },
+  invite: { form: "accept-invite-form", heading: "invite-heading" },
+};
+
+function showAuthMode(mode) {
+  for (const [key, ids] of Object.entries(AUTH_MODES)) {
+    document.getElementById(ids.form).hidden = key !== mode;
+    document.getElementById(ids.heading).hidden = key !== mode;
+  }
+  document.getElementById("tab-login").classList.toggle("active", mode === "login");
+  document.getElementById("tab-register").classList.toggle("active", mode === "register");
+  document.getElementById("auth-tabs").hidden = mode !== "login" && mode !== "register";
   authError.hidden = true;
+  authSuccess.hidden = true;
+}
+
+function getUrlToken(param) {
+  return new URLSearchParams(window.location.search).get(param);
+}
+
+// Reset/invite tokens are single-use server-side, but strip them from the
+// address bar too once consumed so a refresh or a shared link doesn't
+// re-submit an already-spent token.
+function clearUrlToken() {
+  history.replaceState(null, "", window.location.pathname);
 }
 
 document.getElementById("login-form").addEventListener("submit", async (e) => {
@@ -152,6 +178,73 @@ document.getElementById("register-form").addEventListener("submit", async (e) =>
   }
 });
 
+document.getElementById("forgot-password-link").addEventListener("click", () => showAuthMode("forgot"));
+document.getElementById("forgot-back-btn").addEventListener("click", () => showAuthMode("login"));
+
+document.getElementById("forgot-password-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  authError.hidden = true;
+  authSuccess.hidden = true;
+  try {
+    const data = await api("/auth/forgot-password", {
+      auth: false,
+      method: "POST",
+      body: { email: document.getElementById("forgot-email").value },
+    });
+    document.getElementById("forgot-password-form").reset();
+    authSuccess.textContent = data.message || "Si el email está registrado, te enviamos un enlace de recuperación.";
+    authSuccess.hidden = false;
+  } catch (err) {
+    showAuthError(err.message);
+  }
+});
+
+document.getElementById("reset-password-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  authError.hidden = true;
+  const password = document.getElementById("reset-password").value;
+  const confirmPassword = document.getElementById("reset-password-confirm").value;
+  if (password !== confirmPassword) {
+    showAuthError("Las contraseñas no coinciden.");
+    return;
+  }
+  try {
+    const data = await api("/auth/reset-password", {
+      auth: false,
+      method: "POST",
+      body: { token: state.pendingResetToken, password },
+    });
+    clearUrlToken();
+    setTokens(data.access_token, data.refresh_token);
+    await enterDashboard();
+  } catch (err) {
+    showAuthError(err.message);
+  }
+});
+
+document.getElementById("accept-invite-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  authError.hidden = true;
+  const password = document.getElementById("invite-accept-password").value;
+  const confirmPassword = document.getElementById("invite-accept-password-confirm").value;
+  if (password !== confirmPassword) {
+    showAuthError("Las contraseñas no coinciden.");
+    return;
+  }
+  try {
+    const data = await api("/accounts/invites/accept", {
+      auth: false,
+      method: "POST",
+      body: { token: state.pendingInviteToken, password },
+    });
+    clearUrlToken();
+    setTokens(data.access_token, data.refresh_token);
+    await enterDashboard();
+  } catch (err) {
+    showAuthError(err.message);
+  }
+});
+
 document.getElementById("logout-btn").addEventListener("click", async () => {
   const refreshToken = state.refreshToken;
   try {
@@ -179,11 +272,15 @@ function showLoggedOut() {
   authView.hidden = false;
   dashboardView.hidden = true;
   topbarAccount.hidden = true;
+  // Always land back on login, not whatever single-purpose mode (register,
+  // forgot, reset, invite) was showing before — those tokens are spent or
+  // irrelevant after a session, and register/forgot/etc. shouldn't linger.
+  showAuthMode("login");
 }
 
 function sessionExpired() {
   showLoggedOut();
-  switchAuthTab("login");
+  showAuthMode("login");
   showAuthError("Tu sesión expiró — iniciá sesión de nuevo.");
 }
 
@@ -384,8 +481,8 @@ function renderChart(daily) {
     const groupX = padding + i * barGroupWidth;
     const revY = scale(d.total_revenue);
     const spendY = scale(d.ad_spend);
-    bars += `<rect x="${groupX}" y="${revY}" width="${barWidth}" height="${(height - padding) - revY}" fill="${colorRevenue}" rx="2"></rect>`;
-    bars += `<rect x="${groupX + barWidth + 3}" y="${spendY}" width="${barWidth}" height="${(height - padding) - spendY}" fill="${colorSpend}" rx="2"></rect>`;
+    bars += `<rect class="chart-bar" data-index="${i}" x="${groupX}" y="${revY}" width="${barWidth}" height="${(height - padding) - revY}" fill="${colorRevenue}" rx="2"></rect>`;
+    bars += `<rect class="chart-bar" data-index="${i}" x="${groupX + barWidth + 3}" y="${spendY}" width="${barWidth}" height="${(height - padding) - spendY}" fill="${colorSpend}" rx="2"></rect>`;
     if (i % Math.ceil(daily.length / 8 || 1) === 0) {
       labels += `<text x="${groupX}" y="${height - 8}" font-size="10" fill="${colorText}">${String(d.day).slice(5)}</text>`;
     }
@@ -401,7 +498,46 @@ function renderChart(daily) {
       <span><span style="display:inline-block;width:9px;height:9px;background:${colorRevenue};border-radius:2px;margin-right:4px;"></span>Ventas</span>
       <span><span style="display:inline-block;width:9px;height:9px;background:${colorSpend};border-radius:2px;margin-right:4px;"></span>Gasto en ads</span>
     </div>
+    <div class="chart-tooltip" id="chart-tooltip" hidden></div>
   `;
+
+  attachChartTooltips(container, daily, colorRevenue, colorSpend);
+}
+
+// d.day is a bare "YYYY-MM-DD" (no time component) — parsing that with
+// `new Date(str)` reads it as UTC midnight, which display-shifts to the
+// previous day in any negative-UTC-offset zone (e.g. Argentina, UTC-3).
+// Building the Date from local-time components instead sidesteps that.
+function fmtChartDay(dayStr) {
+  const [year, month, day] = dayStr.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("es-AR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+// Delegated per-bar hover (rects are recreated on every render/theme toggle,
+// so listeners are re-attached here rather than once at boot).
+function attachChartTooltips(container, daily, colorRevenue, colorSpend) {
+  const tooltip = document.getElementById("chart-tooltip");
+  container.querySelectorAll(".chart-bar").forEach((bar) => {
+    const d = daily[Number(bar.dataset.index)];
+    bar.addEventListener("mousemove", (e) => {
+      const rect = container.getBoundingClientRect();
+      tooltip.innerHTML = `
+        <strong>${fmtChartDay(d.day)}</strong>
+        <div class="chart-tooltip-row"><span class="chart-tooltip-dot" style="background:${colorRevenue}"></span>Ventas: ${fmtMoney(d.total_revenue, state.activeStoreCurrency)}</div>
+        <div class="chart-tooltip-row"><span class="chart-tooltip-dot" style="background:${colorSpend}"></span>Ads: ${fmtMoney(d.ad_spend, state.activeStoreCurrency)}</div>
+      `;
+      tooltip.style.left = `${e.clientX - rect.left}px`;
+      tooltip.style.top = `${e.clientY - rect.top}px`;
+      tooltip.hidden = false;
+    });
+    bar.addEventListener("mouseleave", () => {
+      tooltip.hidden = true;
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -688,6 +824,20 @@ async function seedDemoData(storeId) {
 // ---------------------------------------------------------------------------
 
 (async function boot() {
+  const inviteToken = getUrlToken("invite_token");
+  const resetToken = getUrlToken("reset_token");
+
+  if (inviteToken) {
+    state.pendingInviteToken = inviteToken;
+    showAuthMode("invite");
+    return;
+  }
+  if (resetToken) {
+    state.pendingResetToken = resetToken;
+    showAuthMode("reset");
+    return;
+  }
+
   if (!state.token && !state.refreshToken) return;
   try {
     await enterDashboard();
