@@ -10,6 +10,47 @@ const state = {
   stores: [],
   activeStoreId: null,
   activeStoreCurrency: "USD",
+  dashboardLayout: null,
+  dashboardEditMode: false,
+};
+
+// ---------------------------------------------------------------------------
+// Dashboard widgets — the summary board is user-configurable (which widgets
+// show, their order, and which stat is the 2x2 hero), persisted per-user via
+// GET/PUT /dashboard/layout. Adding a new widget type means adding it here
+// AND to WidgetType in backend/app/schemas/dashboard.py.
+// ---------------------------------------------------------------------------
+
+const WIDGET_LABELS = {
+  stat_roas: "True ROAS",
+  stat_revenue: "Revenue",
+  stat_net_profit: "Profit neto",
+  stat_ad_spend: "Gasto en ads",
+  stat_real_profit: "Profit real (post-ads)",
+  chart_daily: "Ventas vs. gasto en ads por día",
+  connector_status: "Estado de conectores",
+};
+const STAT_WIDGET_TYPES = ["stat_roas", "stat_revenue", "stat_net_profit", "stat_ad_spend", "stat_real_profit"];
+const ALL_WIDGET_TYPES = Object.keys(WIDGET_LABELS);
+
+// current/prev are read straight off a /metrics/summary response.
+const STAT_FIELD_MAP = {
+  stat_roas: {
+    value: (s) => (s.true_roas === null || s.true_roas === undefined ? "—" : `${s.true_roas}x`),
+    raw: (s) => s.true_roas,
+  },
+  stat_revenue: { value: (s) => fmtMoney(s.revenue, state.activeStoreCurrency), raw: (s) => s.revenue },
+  stat_net_profit: { value: (s) => fmtMoney(s.net_profit, state.activeStoreCurrency), raw: (s) => s.net_profit },
+  stat_ad_spend: {
+    value: (s) => fmtMoney(s.total_ad_spend, state.activeStoreCurrency),
+    raw: (s) => s.total_ad_spend,
+    neutral: true,
+  },
+  stat_real_profit: {
+    value: (s) => fmtMoney(s.real_profit_after_ads, state.activeStoreCurrency),
+    raw: (s) => s.real_profit_after_ads,
+    signColor: true,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -308,6 +349,11 @@ async function enterDashboard() {
   dashboardView.hidden = false;
   switchDashboardView("dashboard");
 
+  // Layout is per-user, not per-store, so it's fetched once here rather
+  // than on every selectStore().
+  const layoutResponse = await api("/dashboard/layout");
+  state.dashboardLayout = layoutResponse.widgets;
+
   await loadStores();
 }
 
@@ -367,8 +413,177 @@ async function selectStore(storeId) {
   document.getElementById("store-name").textContent = store.name;
   document.getElementById("store-meta").textContent = `${store.platform} · ${store.currency}`;
 
+  renderWidgetsRoot();
   await refreshMetrics();
   await refreshConnectorHealth();
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard widget rendering (shells) + customize mode
+// ---------------------------------------------------------------------------
+
+document.getElementById("customize-btn").addEventListener("click", () => {
+  state.dashboardEditMode = !state.dashboardEditMode;
+  const btn = document.getElementById("customize-btn");
+  btn.textContent = state.dashboardEditMode ? "Listo" : "Personalizar";
+  btn.classList.toggle("btn-primary", state.dashboardEditMode);
+  btn.classList.toggle("btn-ghost", !state.dashboardEditMode);
+  renderWidgetsRoot();
+});
+
+function renderWidgetsRoot() {
+  const root = document.getElementById("widgets-root");
+  const layout = state.dashboardLayout || [];
+  const statWidgets = layout.filter((w) => STAT_WIDGET_TYPES.includes(w.type));
+  const panelWidgets = layout.filter((w) => !STAT_WIDGET_TYPES.includes(w.type));
+
+  const statHtml = statWidgets.length
+    ? `<div class="bento-grid">${statWidgets.map(renderStatWidgetShell).join("")}</div>`
+    : "";
+  root.innerHTML = statHtml + panelWidgets.map(renderPanelWidgetShell).join("");
+
+  attachWidgetControlListeners();
+  renderWidgetAddPanel();
+  applyCachedMetrics();
+}
+
+function widgetControlsHtml(type, { isStat, hero }) {
+  return `
+    <div class="widget-controls">
+      <button type="button" class="widget-ctrl" data-move-widget="${type}" data-dir="up" title="Mover arriba">▲</button>
+      <button type="button" class="widget-ctrl" data-move-widget="${type}" data-dir="down" title="Mover abajo">▼</button>
+      ${isStat ? `<button type="button" class="widget-ctrl ${hero ? "active" : ""}" data-toggle-hero="${type}" title="Destacar">★</button>` : ""}
+      <button type="button" class="widget-ctrl widget-ctrl-remove" data-remove-widget="${type}" title="Quitar">✕</button>
+    </div>
+  `;
+}
+
+function renderStatWidgetShell(w) {
+  return `
+    <div class="stat-card ${w.hero ? "stat-hero" : ""}">
+      <div class="widget-card-header">
+        <span class="stat-label">${WIDGET_LABELS[w.type]}</span>
+        ${state.dashboardEditMode ? widgetControlsHtml(w.type, { isStat: true, hero: w.hero }) : ""}
+      </div>
+      <span class="stat-value ${w.hero ? "stat-hero-value" : ""}" id="stat-value-${w.type}">—</span>
+      <span class="stat-delta" id="stat-delta-${w.type}"></span>
+    </div>
+  `;
+}
+
+function renderPanelWidgetShell(w) {
+  const isChart = w.type === "chart_daily";
+  const bodyId = isChart ? "chart-container" : "connector-status";
+  const bodyClass = isChart ? "chart-container" : "connector-grid";
+  return `
+    <div class="panel">
+      <div class="widget-card-header">
+        <h3>${WIDGET_LABELS[w.type]}</h3>
+        ${state.dashboardEditMode ? widgetControlsHtml(w.type, { isStat: false }) : ""}
+      </div>
+      <div id="${bodyId}" class="${bodyClass}"></div>
+    </div>
+  `;
+}
+
+function renderWidgetAddPanel() {
+  const panel = document.getElementById("widget-add-panel");
+  const list = document.getElementById("widget-add-list");
+  if (!state.dashboardEditMode) {
+    panel.hidden = true;
+    return;
+  }
+  const currentTypes = new Set(state.dashboardLayout.map((w) => w.type));
+  const hiddenTypes = ALL_WIDGET_TYPES.filter((t) => !currentTypes.has(t));
+  panel.hidden = hiddenTypes.length === 0;
+  list.innerHTML = hiddenTypes
+    .map((t) => `
+      <div class="widget-add-row">
+        <span>${WIDGET_LABELS[t]}</span>
+        <button type="button" class="btn btn-ghost" data-add-widget="${t}">+ Agregar</button>
+      </div>
+    `)
+    .join("");
+  list.querySelectorAll("[data-add-widget]").forEach((btn) => {
+    btn.addEventListener("click", () => addWidget(btn.dataset.addWidget));
+  });
+}
+
+function attachWidgetControlListeners() {
+  document.querySelectorAll("[data-move-widget]").forEach((btn) => {
+    btn.addEventListener("click", () => moveWidget(btn.dataset.moveWidget, btn.dataset.dir));
+  });
+  document.querySelectorAll("[data-toggle-hero]").forEach((btn) => {
+    btn.addEventListener("click", () => toggleHero(btn.dataset.toggleHero));
+  });
+  document.querySelectorAll("[data-remove-widget]").forEach((btn) => {
+    btn.addEventListener("click", () => removeWidget(btn.dataset.removeWidget));
+  });
+}
+
+function moveWidget(type, direction) {
+  const layout = state.dashboardLayout;
+  const idx = layout.findIndex((w) => w.type === type);
+  if (idx === -1) return;
+
+  // Reorder only within the same visual group (stat cards vs. panels) —
+  // the two groups are always rendered in separate sections regardless of
+  // their relative order in the underlying array, so "up/down" only makes
+  // sense relative to same-group siblings.
+  const isStat = STAT_WIDGET_TYPES.includes(type);
+  const groupIndices = layout
+    .map((w, i) => ({ w, i }))
+    .filter(({ w }) => STAT_WIDGET_TYPES.includes(w.type) === isStat)
+    .map(({ i }) => i);
+  const posInGroup = groupIndices.indexOf(idx);
+  const swapPos = direction === "up" ? posInGroup - 1 : posInGroup + 1;
+  if (swapPos < 0 || swapPos >= groupIndices.length) return;
+
+  const swapIdx = groupIndices[swapPos];
+  [layout[idx], layout[swapIdx]] = [layout[swapIdx], layout[idx]];
+  persistAndRerenderLayout();
+}
+
+function toggleHero(type) {
+  const target = state.dashboardLayout.find((w) => w.type === type);
+  if (!target) return;
+  const turningOn = !target.hero;
+  // Only one hero at a time — the bento grid has one 2x2 slot.
+  state.dashboardLayout.forEach((w) => {
+    w.hero = w.type === type && turningOn;
+  });
+  persistAndRerenderLayout();
+}
+
+function removeWidget(type) {
+  state.dashboardLayout = state.dashboardLayout.filter((w) => w.type !== type);
+  persistAndRerenderLayout();
+}
+
+function addWidget(type) {
+  if (state.dashboardLayout.some((w) => w.type === type)) return;
+  state.dashboardLayout.push({ type, hero: false });
+  persistAndRerenderLayout();
+}
+
+async function persistAndRerenderLayout() {
+  renderWidgetsRoot();
+  // Cached stat/chart/connector data reapplies instantly via
+  // applyCachedMetrics() inside renderWidgetsRoot(); these two also cover a
+  // freshly-added chart/connector widget, which has no cached data yet.
+  await refreshMetrics();
+  await refreshConnectorHealth();
+  try {
+    await api("/dashboard/layout", { method: "PUT", body: { widgets: state.dashboardLayout } });
+  } catch (err) {
+    alert("No se pudo guardar el layout: " + err.message);
+  }
+}
+
+function applyCachedMetrics() {
+  if (state.lastSummary) applyStatWidgets(state.lastSummary, state.lastPrevSummary);
+  if (state.lastDaily) renderChart(state.lastDaily);
+  if (state.lastConnectorHealth) renderConnectorGrid(state.lastConnectorHealth);
 }
 
 // ---------------------------------------------------------------------------
@@ -402,6 +617,7 @@ function previousDateRange(startIso, endIso) {
 // metrics (like ad spend) where a change isn't inherently good or bad.
 function renderDelta(elId, current, previous, { neutral = false } = {}) {
   const el = document.getElementById(elId);
+  if (!el) return; // widget not in the current layout
   if (previous === null || previous === undefined || previous === 0 || current === null || current === undefined) {
     el.textContent = "";
     el.className = "stat-delta";
@@ -414,8 +630,32 @@ function renderDelta(elId, current, previous, { neutral = false } = {}) {
   el.className = "stat-delta " + (neutral ? "neutral" : pct >= 0 ? "positive" : "negative");
 }
 
+function applyStatWidgets(summary, prevSummary) {
+  document.getElementById("metrics-empty").hidden = summary.revenue > 0;
+
+  for (const [type, field] of Object.entries(STAT_FIELD_MAP)) {
+    const valueEl = document.getElementById(`stat-value-${type}`);
+    if (valueEl) {
+      valueEl.textContent = field.value(summary);
+      if (field.signColor) {
+        valueEl.className = "stat-value " + (field.raw(summary) >= 0 ? "positive" : "negative");
+      }
+    }
+    renderDelta(`stat-delta-${type}`, field.raw(summary), field.raw(prevSummary), { neutral: !!field.neutral });
+  }
+}
+
 async function refreshMetrics() {
   if (!state.activeStoreId) return;
+  // No stat widget and no chart on the board — skip the fetch entirely,
+  // matching "the user arranges it to their liking" down to what's synced.
+  const layout = state.dashboardLayout || [];
+  const needsData = layout.some((w) => STAT_WIDGET_TYPES.includes(w.type) || w.type === "chart_daily");
+  if (!needsData) {
+    document.getElementById("metrics-empty").hidden = true;
+    return;
+  }
+
   const { start, end } = dateRange();
   const qs = `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
   const prevRange = previousDateRange(start, end);
@@ -427,31 +667,17 @@ async function refreshMetrics() {
     api(`/stores/${state.activeStoreId}/metrics/summary?${prevQs}`),
   ]);
 
-  document.getElementById("metrics-empty").hidden = summary.revenue > 0;
-
-  document.getElementById("stat-revenue").textContent = fmtMoney(summary.revenue, state.activeStoreCurrency);
-  document.getElementById("stat-net-profit").textContent = fmtMoney(summary.net_profit, state.activeStoreCurrency);
-  document.getElementById("stat-ad-spend").textContent = fmtMoney(summary.total_ad_spend, state.activeStoreCurrency);
-
-  const realProfitEl = document.getElementById("stat-real-profit");
-  realProfitEl.textContent = fmtMoney(summary.real_profit_after_ads, state.activeStoreCurrency);
-  realProfitEl.className = "stat-value " + (summary.real_profit_after_ads >= 0 ? "positive" : "negative");
-
-  document.getElementById("stat-roas").textContent =
-    summary.true_roas === null || summary.true_roas === undefined ? "—" : `${summary.true_roas}x`;
-
-  renderDelta("stat-revenue-delta", summary.revenue, prevSummary.revenue);
-  renderDelta("stat-net-profit-delta", summary.net_profit, prevSummary.net_profit);
-  renderDelta("stat-ad-spend-delta", summary.total_ad_spend, prevSummary.total_ad_spend, { neutral: true });
-  renderDelta("stat-real-profit-delta", summary.real_profit_after_ads, prevSummary.real_profit_after_ads);
-  renderDelta("stat-roas-delta", summary.true_roas, prevSummary.true_roas);
-
+  state.lastSummary = summary;
+  state.lastPrevSummary = prevSummary;
   state.lastDaily = daily;
+
+  applyStatWidgets(summary, prevSummary);
   renderChart(daily);
 }
 
 function renderChart(daily) {
   const container = document.getElementById("chart-container");
+  if (!container) return; // chart_daily widget not on the current layout
   if (!daily.length) {
     container.innerHTML = '<div class="chart-empty">Todavía no hay datos en este rango.</div>';
     return;
@@ -545,8 +771,16 @@ function attachChartTooltips(container, daily, colorRevenue, colorSpend) {
 // ---------------------------------------------------------------------------
 
 async function refreshConnectorHealth() {
-  const grid = document.getElementById("connector-status");
+  // connector_status widget not on the current layout — don't even fetch.
+  if (!document.getElementById("connector-status")) return;
   const health = await api(`/stores/${state.activeStoreId}/connectors/health`);
+  state.lastConnectorHealth = health;
+  renderConnectorGrid(health);
+}
+
+function renderConnectorGrid(health) {
+  const grid = document.getElementById("connector-status");
+  if (!grid) return;
   const providers = ["shopify", "meta", "google"];
 
   grid.innerHTML = providers

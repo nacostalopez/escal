@@ -3,6 +3,7 @@ from app.models.hypertables import ad_spend, orders, pixel_events
 from app.models.relational import (
     Account,
     AccountInvite,
+    DashboardLayout,
     PasswordResetToken,
     Product,
     RefreshToken,
@@ -14,6 +15,7 @@ from app.models.relational import (
 __all__ = [
     "Account",
     "AccountInvite",
+    "DashboardLayout",
     "PasswordResetToken",
     "RefreshToken",
     "Store",

@@ -624,4 +624,5 @@ The `sync_google_ad_spend` endpoint automatically refreshes expired tokens.
 14. ✅ Invite-link landing flow + forgot/reset-password flow on the frontend
 15. ✅ Hover tooltips on the daily revenue-vs-spend chart
 16. ✅ "Resend invite" action (fresh token + expiry, Equipo screen)
-17. ⏳ Password strength meter
+17. ✅ Configurable summary board (per-user widget add/remove/reorder/hero)
+18. ⏳ Password strength meter

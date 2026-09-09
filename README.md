@@ -135,6 +135,32 @@ rest with Fernet (`CREDENTIALS_ENCRYPTION_KEY`) before they hit the database.
 Set `JWT_SECRET` and `CREDENTIALS_ENCRYPTION_KEY` in `.env` for anything
 beyond local dev — see `.env.example`.
 
+### Dashboard layout
+
+The summary board's widgets — which ones show, their order, and which stat
+is the 2x2 hero tile — are a per-user preference (`dashboard_layouts`, one
+row per user), not per-account or per-store: each teammate arranges their
+own view of the same underlying data. A user with no saved layout gets a
+sensible default (every widget, True ROAS as hero) rather than an empty
+board:
+
+```bash
+curl localhost:8000/dashboard/layout -H "Authorization: Bearer <access_token>"
+# => {"widgets": [{"type": "stat_roas", "hero": true}, {"type": "stat_revenue", "hero": false}, ...]}
+
+curl -X PUT localhost:8000/dashboard/layout \
+  -H "Authorization: Bearer <access_token>" -H "Content-Type: application/json" \
+  -d '{"widgets": [{"type": "stat_roas", "hero": true}, {"type": "chart_daily", "hero": false}]}'
+# replaces the whole layout — the frontend always sends the full widget
+# list after any add/remove/reorder/hero change, so this is a full
+# overwrite, not a patch
+```
+
+Any role (including viewer) can save their own layout — it's a display
+preference, not a data-access permission. Widget types are validated
+server-side (`WidgetType` in `app/schemas/dashboard.py`); an unknown type or
+a duplicate type in the same layout is rejected with `422`.
+
 ## API overview
 
 - `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
@@ -146,6 +172,9 @@ beyond local dev — see `.env.example`.
   `POST /accounts/invites/{id}/resend` (fresh token + expiry, same email),
   `POST /accounts/invites/accept` — owner-only except accept
 - `PATCH /accounts/members/{id}/role`, `DELETE /accounts/members/{id}` — owner-only
+- `GET /dashboard/layout`, `PUT /dashboard/layout` — per-user (any role) summary
+  board customization: which widgets show, their order, and which stat is the
+  2x2 hero tile
 - `POST /stores`, `GET /stores`, `GET /stores/{id}`,
   `PUT /stores/{id}/credentials` (OAuth tokens per provider, encrypted at rest)
 - `PUT /stores/{id}/products` (bulk upsert by `external_id`, carries COGS/shipping cost)
@@ -180,11 +209,13 @@ transparent frontend token refresh are done.
 The frontend (`frontend/`, plain HTML/CSS/JS, no build step) has been carried
 well past "just enough to see real numbers": ARAMAL brand system with light/
 dark mode, a Spanish (`vos`-register, es-AR-formatted) UI throughout, a
-bento-grid dashboard with real period-over-period deltas, hover tooltips on
-the daily revenue-vs-spend chart, a full Equipo (team) screen for the invite/
-role/remove routes above (including a "Reenviar" action for a pending
-invite), an invite-link landing flow (`index.html?invite_token=...`), and a
-forgot/reset-password flow (`index.html?reset_token=...`). Not yet built:
+user-configurable summary board (add/remove/reorder widgets, pick which stat
+is the 2x2 hero — see "Dashboard layout" below) with real period-over-period
+deltas, hover tooltips on the daily revenue-vs-spend chart, a full Equipo
+(team) screen for the invite/role/remove routes above (including a
+"Reenviar" action for a pending invite), an invite-link landing flow
+(`index.html?invite_token=...`), and a forgot/reset-password flow
+(`index.html?reset_token=...`). Not yet built:
 
 - No password strength meter on the frontend.
 - `tests/test_auth.py::TestAuthenticatedRequests::test_get_current_user_no_token`

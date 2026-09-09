@@ -242,47 +242,17 @@
                   <option value="30">Últimos 30 días</option>
                 </select>
                 <button id="seed-btn" class="btn btn-ghost">Cargar datos de demo</button>
+                <button id="customize-btn" class="btn btn-ghost">Personalizar</button>
               </div>
             </div>
 
             <div id="metrics-empty" class="muted" hidden>Todavía no hay pedidos en este rango — probá "Cargar datos de demo".</div>
 
-            <div class="bento-grid">
-              <div class="stat-card stat-hero">
-                <span class="stat-label">True ROAS</span>
-                <span class="stat-value stat-hero-value" id="stat-roas">—</span>
-                <span class="stat-delta" id="stat-roas-delta"></span>
-              </div>
-              <div class="stat-card">
-                <span class="stat-label">Revenue</span>
-                <span class="stat-value" id="stat-revenue">—</span>
-                <span class="stat-delta" id="stat-revenue-delta"></span>
-              </div>
-              <div class="stat-card">
-                <span class="stat-label">Profit neto</span>
-                <span class="stat-value" id="stat-net-profit">—</span>
-                <span class="stat-delta" id="stat-net-profit-delta"></span>
-              </div>
-              <div class="stat-card">
-                <span class="stat-label">Gasto en ads</span>
-                <span class="stat-value" id="stat-ad-spend">—</span>
-                <span class="stat-delta" id="stat-ad-spend-delta"></span>
-              </div>
-              <div class="stat-card">
-                <span class="stat-label">Profit real (post-ads)</span>
-                <span class="stat-value" id="stat-real-profit">—</span>
-                <span class="stat-delta" id="stat-real-profit-delta"></span>
-              </div>
-            </div>
+            <div id="widgets-root"></div>
 
-            <div class="panel">
-              <h3>Ventas vs. gasto en ads por día</h3>
-              <div id="chart-container" class="chart-container"></div>
-            </div>
-
-            <div class="panel">
-              <h3>Estado de conectores</h3>
-              <div id="connector-status" class="connector-grid"></div>
+            <div id="widget-add-panel" class="panel" hidden>
+              <h3>Agregar widget</h3>
+              <div id="widget-add-list" class="widget-add-list"></div>
             </div>
           </div>
         </div>
