@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy import insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
@@ -30,6 +30,8 @@ from app.models import (
 )
 from app.rate_limit import limiter
 from app.security import create_oauth_state_token, decrypt_secret, encrypt_secret, hash_token
+from app.services.capi import send_google_purchase_conversion, send_meta_purchase_event
+from app.services.connector_status import _upsert_connector_status
 from app.services.customers import resolve_customer_id
 
 logger = logging.getLogger("escal.connectors")
@@ -43,37 +45,6 @@ health_router = APIRouter(prefix="/stores/{store_id}/connectors", tags=["connect
 # OAuth flows should complete in well under this — it only needs to survive
 # the user's round trip to the provider's consent screen and back.
 OAUTH_STATE_EXPIRE_MINUTES = 10
-
-
-def _upsert_connector_status(
-    db: Session,
-    store_id: UUID,
-    provider: str,
-    *,
-    synced: bool = False,
-    success: bool = False,
-    error: Optional[str] = None,
-) -> None:
-    """Record a connect/sync attempt in connector_status (upsert by store_id+provider).
-
-    Only the columns implied by the call are touched — a plain OAuth connect
-    (synced=False) doesn't overwrite last_synced_at from an unrelated sync.
-    """
-    now = datetime.utcnow()
-    values = {"store_id": store_id, "provider": provider, "last_error": error}
-    if synced:
-        values["last_synced_at"] = now
-    if success:
-        values["last_success_at"] = now
-
-    stmt = pg_insert(ConnectorStatus.__table__).values(**values)
-    update_cols = {k: stmt.excluded[k] for k in values if k not in ("store_id", "provider")}
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["store_id", "provider"],
-        set_=update_cols,
-    )
-    db.execute(stmt)
-    db.commit()
 
 
 def _create_oauth_state(db: Session, store_id: UUID, provider: str) -> str:
@@ -214,6 +185,7 @@ def shopify_oauth_callback(
 async def shopify_webhook(
     request: Request,
     store_id: UUID,
+    background_tasks: BackgroundTasks,
     x_shopify_hmac_sha256: str = Header(None),
     x_shopify_shop_api_version: str = Header(None),
     x_shopify_topic: str = Header(None),
@@ -301,6 +273,8 @@ async def shopify_webhook(
                 set_=update_cols,
             )
             db.execute(stmt)
+            background_tasks.add_task(send_meta_purchase_event, store_id, row["order_id"], row)
+            background_tasks.add_task(send_google_purchase_conversion, store_id, row["order_id"], row)
 
         db.add(
             ShopifyWebhookLog(
@@ -849,6 +823,7 @@ def tiendanube_oauth_callback(
 async def tiendanube_webhook(
     request: Request,
     store_id: UUID,
+    background_tasks: BackgroundTasks,
     x_linkedstore_hmac_sha256: str = Header(None),
     x_linkedstore_topic: str = Header(None),
     db: Session = Depends(get_db),
@@ -936,6 +911,8 @@ async def tiendanube_webhook(
                 set_=update_cols,
             )
             db.execute(stmt)
+            background_tasks.add_task(send_meta_purchase_event, store_id, row["order_id"], row)
+            background_tasks.add_task(send_google_purchase_conversion, store_id, row["order_id"], row)
 
         db.add(
             TiendanubeWebhookLog(

@@ -28,6 +28,10 @@ class StoreCredentialCreate(BaseModel):
     access_token: str
     refresh_token: str | None = None
     expires_at: datetime | None = None
+    # CAPI feedback loop opt-in — see app/services/capi.py. capi_destination_id
+    # is the Meta pixel id or Google conversionAction resource name.
+    capi_enabled: bool = False
+    capi_destination_id: str | None = None
 
 
 class StoreCredentialOut(BaseModel):
@@ -37,3 +41,5 @@ class StoreCredentialOut(BaseModel):
     store_id: UUID
     provider: str
     expires_at: datetime | None = None
+    capi_enabled: bool = False
+    capi_destination_id: str | None = None

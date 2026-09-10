@@ -630,8 +630,11 @@ The `sync_google_ad_spend` endpoint automatically refreshes expired tokens.
     table linked from every order-ingestion path)
 20. ✅ LTV by cohort + blended CAC payback (`/metrics/ltv-cohorts` +
     dashboard cohort-grid widget)
-21. ⏳ Password strength meter
-22. ⏳ Per-channel CAC, product journeys (now unblocked by #19/#20)
-23. ⏳ Creative-level revenue/ROAS attribution (needs ad_id/creative_id on
+21. ✅ CAPI feedback loop (Meta Conversions API + Google Enhanced
+    Conversions for Leads, via BackgroundTasks; Google side unverified
+    against a real Ads account — see README "CAPI feedback loop")
+22. ⏳ Password strength meter
+23. ⏳ Per-channel CAC, product journeys (now unblocked by #19/#20)
+24. ⏳ Creative-level revenue/ROAS attribution (needs ad_id/creative_id on
     `orders`, not just utm_source/utm_campaign)
-24. ⏳ Creative thumbnails (needs a per-creative API call on both platforms)
+25. ⏳ Creative thumbnails (needs a per-creative API call on both platforms)

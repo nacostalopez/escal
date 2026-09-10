@@ -258,6 +258,50 @@ class MetaConnector(BaseConnector):
 
         return records
 
+    def send_purchase_event(
+        self,
+        access_token: str,
+        pixel_id: str,
+        order_id: str,
+        order_time: datetime,
+        value: float,
+        currency: str,
+        email_hash: Optional[str],
+        phone_hash: Optional[str],
+    ) -> None:
+        """Send a server-side Purchase event to the Meta Conversions API.
+
+        em/ph must already be SHA-256 hashes normalized the way Meta expects
+        (see app/services/customers.py — that's the whole point of hashing
+        with their exact recipe up front). event_id is deterministic from
+        order_id so a re-sent event (there shouldn't be one — the caller,
+        app/services/capi.py, checks capi_events for idempotency first) would
+        still dedupe correctly against any browser-pixel Purchase event with
+        the same id.
+        """
+        url = f"{self.API_BASE}/{pixel_id}/events"
+        user_data = {}
+        if email_hash:
+            user_data["em"] = [email_hash]
+        if phone_hash:
+            user_data["ph"] = [phone_hash]
+
+        payload = {
+            "data": [
+                {
+                    "event_name": "Purchase",
+                    "event_time": int(order_time.timestamp()),
+                    "event_id": f"order:{order_id}",
+                    "action_source": "website",
+                    "user_data": user_data,
+                    "custom_data": {"value": value, "currency": currency},
+                }
+            ]
+        }
+
+        response = requests.post(url, params={"access_token": access_token}, json=payload)
+        response.raise_for_status()
+
     def fetch_historical_data(
         self,
         access_token: str,

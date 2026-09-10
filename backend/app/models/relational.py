@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -116,6 +116,12 @@ class StoreCredential(Base):
     # calls don't require the caller to keep re-supplying it. Nullable —
     # Shopify/Meta/Google don't use it.
     provider_account_id = Column(String(255))
+    # CAPI feedback loop (Meta Conversions API / Google Enhanced Conversions)
+    # — opt-in per store+provider. capi_destination_id is the Meta pixel id
+    # or Google conversionAction resource name, depending on `provider`.
+    # See app/services/capi.py.
+    capi_enabled = Column(Boolean, nullable=False, default=False)
+    capi_destination_id = Column(String(255))
 
     store = relationship("Store", back_populates="credentials")
 
@@ -148,4 +154,22 @@ class Customer(Base):
     phone_hash = Column(String(64))
     external_customer_id = Column(String(255))
     first_order_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CapiEvent(Base):
+    """One row per (store, order, provider) CAPI send attempt — both the
+    idempotency check (never re-send a purchase already marked "sent") and
+    the audit trail (why a send failed). See app/services/capi.py."""
+
+    __tablename__ = "capi_events"
+    __table_args__ = (UniqueConstraint("store_id", "order_id", "provider", name="uq_capi_events_store_order_provider"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id = Column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
+    order_id = Column(String(255), nullable=False)
+    provider = Column(String(50), nullable=False)
+    status = Column(String(20), nullable=False)  # "sent" | "failed"
+    error = Column(Text)
+    sent_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())

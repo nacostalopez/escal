@@ -245,6 +245,39 @@ Analytics scoping out ad-level attribution:
 - No product-journey or repeat-purchase-interval data yet, just the
   cohort/CAC-payback pair.
 
+### CAPI feedback loop
+
+Sends confirmed purchases back to Meta Conversions API and Google Enhanced
+Conversions (for Leads), so both platforms optimize ad delivery against real
+revenue instead of just pixel-fired conversions — closes the loop the
+customer-identity hashes (`customers.email_hash`/`phone_hash`, already
+normalized the way both APIs expect) were built for.
+
+Opt-in per store+provider — no new endpoint, just two new fields on the
+existing `PUT /stores/{id}/credentials` upsert:
+- `capi_enabled: bool` (default `false`)
+- `capi_destination_id: str` — the Meta pixel id, or the full Google
+  `conversionAction` resource name (`customers/{id}/conversionActions/{id}`)
+
+When enabled, every new order (bulk `POST /orders`, Shopify webhook,
+Tiendanube webhook) schedules a background send for both providers right
+after the order commits — `app/services/capi.py` no-ops immediately for
+whichever provider isn't configured, checks a new `capi_events` table first
+to avoid re-sending an already-sent order (e.g. on `orders/updated`), and
+skips entirely if the order has no linked customer (nothing to match on).
+Sends never block the ingestion response — first use of FastAPI's
+`BackgroundTasks` in this codebase.
+
+Like every other connector here, there's **no frontend UI** for this —
+configured via the API only, the same way Meta/Google OAuth credentials
+themselves already are (there's no frontend UI for connecting those
+either). Value sent is `gross_amount` (transaction revenue, what ad
+platforms mean by conversion value), not `net_profit`. No backfill of
+historical orders, no automatic retry on failure — both flagged as
+deliberate v1 simplifications; a failed send stays visible via
+`capi_events.error` and `GET /stores/{id}/connectors/health` (as
+`meta_capi`/`google_capi`) either way.
+
 ## API overview
 
 - `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
@@ -260,7 +293,9 @@ Analytics scoping out ad-level attribution:
   board customization: which widgets show, their order, and which stat is the
   2x2 hero tile
 - `POST /stores`, `GET /stores`, `GET /stores/{id}`,
-  `PUT /stores/{id}/credentials` (OAuth tokens per provider, encrypted at rest)
+  `PUT /stores/{id}/credentials` (OAuth tokens per provider, encrypted at
+  rest; also carries `capi_enabled`/`capi_destination_id` — see "CAPI
+  feedback loop")
 - `PUT /stores/{id}/products` (bulk upsert by `external_id`, carries COGS/shipping cost)
 - `POST /stores/{id}/orders` (bulk ingest/upsert, accepts optional
   `customer_email`/`customer_phone` resolved server-side to `customer_id` —
@@ -300,8 +335,9 @@ accounts with Owner/Admin/Viewer roles, revocable refresh tokens, invite and
 password-reset emails (via SMTP, configurable through env vars), transparent
 frontend token refresh, hash-only customer identity resolution (every
 order-ingestion path links to a deduplicated, PII-free `customers` row —
-see "Customer identity"), and LTV-by-cohort + blended CAC payback (see
-"LTV by cohort + CAC payback") are done.
+see "Customer identity"), LTV-by-cohort + blended CAC payback (see
+"LTV by cohort + CAC payback"), and the Meta/Google CAPI feedback loop
+(see "CAPI feedback loop") are done.
 
 The frontend (`frontend/`, plain HTML/CSS/JS, no build step) has been carried
 well past "just enough to see real numbers": ARAMAL brand system with light/
@@ -328,6 +364,13 @@ flow (`index.html?invite_token=...`), and a forgot/reset-password flow
   CAC payback" above ships blended (not per-channel) CAC and an LTV curve
   only; multi-touch attribution and purchase-sequence analysis are natural
   next steps on top of the same `customers` foundation.
+- The Google side of the CAPI feedback loop (`GoogleAdsConnector.send_purchase_conversion`)
+  is built against Google's documented Enhanced Conversions for Leads
+  request shape but has never been exercised against a real Google Ads
+  account (no test credentials available) — the Meta side has been verified
+  end-to-end against the real Graph API (with an intentionally invalid
+  pixel id, confirming the failure path). Also no EEA consent-mode fields
+  (`consent.adUserData`) sent yet on the Google payload.
 - Pre-existing, unrelated to any feature above: `MetaConnector`/
   `GoogleAdsConnector` are constructed without an `ad_account_id`/
   `customer_id` in `routes/connectors.py`'s sync routes (both `sync-ad-spend`

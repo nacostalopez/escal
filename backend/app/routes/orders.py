@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from app.dependencies import get_owned_store, require_role
 from app.models import Store, User
 from app.models import orders as orders_table
 from app.schemas.orders import OrderCreate, OrderOut
+from app.services.capi import send_google_purchase_conversion, send_meta_purchase_event
 from app.services.customers import resolve_customer_id
 
 router = APIRouter(prefix="/stores/{store_id}/orders", tags=["orders"])
@@ -18,6 +19,7 @@ router = APIRouter(prefix="/stores/{store_id}/orders", tags=["orders"])
 @router.post("", status_code=201)
 def ingest_orders(
     payload: list[OrderCreate],
+    background_tasks: BackgroundTasks,
     store: Store = Depends(get_owned_store),
     _: User = Depends(require_role("owner", "admin")),
     db: Session = Depends(get_db),
@@ -45,6 +47,9 @@ def ingest_orders(
     )
     db.execute(stmt)
     db.commit()
+    for row in rows:
+        background_tasks.add_task(send_meta_purchase_event, store.id, row["order_id"], row)
+        background_tasks.add_task(send_google_purchase_conversion, store.id, row["order_id"], row)
     return {"inserted": len(rows)}
 
 

@@ -1,6 +1,6 @@
 """Google Ads connector for ad spend tracking."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import requests
@@ -264,3 +264,72 @@ class GoogleAdsConnector(BaseConnector):
     ) -> dict:
         """Fetch historical ad spend data."""
         return {"spend_records": self.fetch_ad_spend(access_token, start_date, end_date)}
+
+    def send_purchase_conversion(
+        self,
+        access_token: str,
+        conversion_action: str,
+        order_id: str,
+        order_time: datetime,
+        value: float,
+        currency: str,
+        email_hash: Optional[str],
+        phone_hash: Optional[str],
+    ) -> None:
+        """Upload an Enhanced Conversion for Leads — hashed user_identifiers,
+        no gclid required, matching how Escal captures orders today (no
+        click-id tracking). Request shape follows
+        https://developers.google.com/google-ads/api/samples/upload-enhanced-conversions-for-leads
+
+        conversion_action is the full resource name
+        ("customers/{id}/conversionActions/{id}"), stored as
+        StoreCredential.capi_destination_id for provider="google".
+        """
+        if not self.customer_id:
+            raise ValueError("customer_id required to upload conversions")
+
+        url = f"{self.API_BASE}/customers/{self.customer_id}:uploadClickConversions"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "developer-token": self.settings.google_developer_token,
+        }
+
+        user_identifiers = []
+        if email_hash:
+            user_identifiers.append({"hashedEmail": email_hash})
+        if phone_hash:
+            user_identifiers.append({"hashedPhoneNumber": phone_hash})
+
+        payload = {
+            "conversions": [
+                {
+                    "conversionAction": conversion_action,
+                    "conversionDateTime": _format_conversion_datetime(order_time),
+                    "conversionValue": value,
+                    "currencyCode": currency,
+                    "orderId": order_id,
+                    "userIdentifiers": user_identifiers,
+                }
+            ],
+            "partialFailure": True,
+        }
+
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        # partialFailure=True means Google returns HTTP 200 even when a
+        # conversion row itself was rejected — the real error lands in the
+        # response body, not the status code, so it must be checked here or
+        # a failed send would be silently recorded as "sent".
+        data = response.json()
+        if data.get("partialFailureError"):
+            raise ValueError(f"Google conversion upload partial failure: {data['partialFailureError']}")
+
+
+def _format_conversion_datetime(dt: datetime) -> str:
+    """Google's required format: "yyyy-mm-dd hh:mm:ss+|-hh:mm" — Python's
+    %z gives "+0000" with no colon, so the colon is inserted by hand."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    offset = dt.strftime("%z")
+    return f"{dt.strftime('%Y-%m-%d %H:%M:%S')}{offset[:3]}:{offset[3:]}"
