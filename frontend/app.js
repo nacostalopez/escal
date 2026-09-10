@@ -616,7 +616,15 @@ function dateRange() {
 }
 
 function fmtMoney(n, currency) {
-  return new Intl.NumberFormat("es-AR", { style: "currency", currency: currency || "USD" }).format(n || 0);
+  try {
+    return new Intl.NumberFormat("es-AR", { style: "currency", currency: currency || "USD" }).format(n || 0);
+  } catch {
+    // A store saved before currency was a validated dropdown/backend field
+    // can still have a non-ISO value (e.g. "AR$" instead of "ARS") —
+    // Intl.NumberFormat throws on that rather than silently coercing it,
+    // so fall back to USD formatting rather than crashing the whole widget.
+    return new Intl.NumberFormat("es-AR", { style: "currency", currency: "USD" }).format(n || 0);
+  }
 }
 
 function previousDateRange(startIso, endIso) {

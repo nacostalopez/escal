@@ -1,7 +1,13 @@
+import re
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+# ISO 4217: always three uppercase Latin letters — rejects things like "AR$"
+# (a currency symbol, not a code) that Intl.NumberFormat on the frontend
+# throws on rather than silently coercing.
+_CURRENCY_CODE_RE = re.compile(r"^[A-Z]{3}$")
 
 
 class StoreCreate(BaseModel):
@@ -9,6 +15,13 @@ class StoreCreate(BaseModel):
     platform: str
     currency: str = "USD"
     timezone: str = "UTC"
+
+    @field_validator("currency")
+    @classmethod
+    def currency_must_be_iso_4217_shaped(cls, value: str) -> str:
+        if not _CURRENCY_CODE_RE.match(value):
+            raise ValueError(f"currency must be a 3-letter ISO 4217 code (e.g. USD, ARS) — got {value!r}")
+        return value
 
 
 class StoreOut(BaseModel):
