@@ -30,6 +30,7 @@ const WIDGET_LABELS = {
   chart_daily: "Ventas vs. gasto en ads por día",
   connector_status: "Estado de conectores",
   creative_performance: "Performance por creativo",
+  ltv_cohorts: "LTV por cohorte y CAC payback",
 };
 const STAT_WIDGET_TYPES = ["stat_roas", "stat_revenue", "stat_net_profit", "stat_ad_spend", "stat_real_profit"];
 const ALL_WIDGET_TYPES = Object.keys(WIDGET_LABELS);
@@ -477,6 +478,7 @@ const PANEL_WIDGET_BODY = {
   chart_daily: { id: "chart-container", class: "chart-container" },
   connector_status: { id: "connector-status", class: "connector-grid" },
   creative_performance: { id: "creative-performance-table", class: "creative-table-wrap" },
+  ltv_cohorts: { id: "ltv-cohorts-table", class: "ltv-cohorts-table-wrap" },
 };
 
 function renderPanelWidgetShell(w) {
@@ -580,6 +582,7 @@ async function persistAndRerenderLayout() {
   await refreshMetrics();
   await refreshConnectorHealth();
   await refreshCreativePerformance();
+  await refreshLtvCohorts();
   try {
     await api("/dashboard/layout", { method: "PUT", body: { widgets: state.dashboardLayout } });
   } catch (err) {
@@ -592,6 +595,7 @@ function applyCachedMetrics() {
   if (state.lastDaily) renderChart(state.lastDaily);
   if (state.lastConnectorHealth) renderConnectorGrid(state.lastConnectorHealth);
   if (state.lastCreatives) renderCreativeTable(state.lastCreatives);
+  if (state.lastCohorts) renderLtvCohortsTable(state.lastCohorts);
 }
 
 // ---------------------------------------------------------------------------
@@ -601,6 +605,7 @@ function applyCachedMetrics() {
 document.getElementById("range-select").addEventListener("change", () => {
   refreshMetrics();
   refreshCreativePerformance();
+  refreshLtvCohorts();
 });
 
 function dateRange() {
@@ -813,6 +818,80 @@ function renderConnectorGrid(health) {
       `;
     })
     .join("");
+}
+
+// ---------------------------------------------------------------------------
+// LTV by cohort + CAC payback
+//
+// Unlike every other widget's date range, here start/end select which
+// acquisition cohorts to include (by first order date), not which orders —
+// each cohort's LTV curve looks forward from its own acquisition month
+// regardless of the selected range's end. A cohort from last week can only
+// show one populated month, and that's expected, not a bug.
+// ---------------------------------------------------------------------------
+
+async function refreshLtvCohorts() {
+  if (!document.getElementById("ltv-cohorts-table")) return;
+  const { start, end } = dateRange();
+  const qs = `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+  const rows = await api(`/stores/${state.activeStoreId}/metrics/ltv-cohorts?${qs}`);
+  state.lastCohorts = rows;
+  renderLtvCohortsTable(rows);
+}
+
+function fmtCohortMonth(isoDate) {
+  return new Intl.DateTimeFormat("es-AR", { month: "short", year: "numeric" }).format(new Date(isoDate));
+}
+
+function renderLtvCohortsTable(rows) {
+  const container = document.getElementById("ltv-cohorts-table");
+  if (!container) return;
+
+  const info = '<p class="widget-info">Cohortes según la fecha de primera compra dentro del rango elegido; cada curva de LTV avanza más allá de esa fecha, sin importar el fin del rango.</p>';
+
+  if (!rows.length) {
+    container.innerHTML = info + '<div class="chart-empty">Todavía no hay cohortes en este rango.</div>';
+    return;
+  }
+
+  const months = rows[0].ltv_by_month.length;
+  const monthHeaders = Array.from({ length: months }, (_, i) => `<th>LTV M${i}</th>`).join("");
+
+  container.innerHTML = `
+    ${info}
+    <table class="ltv-cohorts-table">
+      <thead>
+        <tr>
+          <th>Cohorte</th>
+          <th>Clientes nuevos</th>
+          <th>CAC</th>
+          ${monthHeaders}
+          <th>Payback</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map((r) => {
+            const monthCells = r.ltv_by_month
+              .map((v, i) => `<td class="${i === r.payback_month ? "ltv-payback-cell" : ""}">${fmtMoney(v, state.activeStoreCurrency)}</td>`)
+              .join("");
+            const payback = r.payback_month === null
+              ? '<span class="ltv-payback-pending">Sin recuperar aún</span>'
+              : `<span class="ltv-payback-cell">Mes ${r.payback_month}</span>`;
+            return `
+              <tr>
+                <td>${fmtCohortMonth(r.cohort_month)}</td>
+                <td>${r.new_customers.toLocaleString("es-AR")}</td>
+                <td>${r.cac === null ? "—" : fmtMoney(r.cac, state.activeStoreCurrency)}</td>
+                ${monthCells}
+                <td>${payback}</td>
+              </tr>
+            `;
+          })
+          .join("")}
+      </tbody>
+    </table>
+  `;
 }
 
 // ---------------------------------------------------------------------------
@@ -1103,17 +1182,25 @@ async function seedDemoData(storeId) {
   });
 
   // A small repeat-customer pool (rather than a unique email per order) so
-  // a future cohort/LTV feature has actual repeat-purchase data to show.
+  // the LTV-by-cohort widget has actual repeat-purchase data to show. Each
+  // customer's first order is pinned to a fixed acquisition day (not just
+  // picked at random per order) — a customer can only appear on/after their
+  // own acquisition day, spread across ~90 days so demo data covers 2-3
+  // distinct cohort months instead of every customer's *true* first order
+  // (the minimum across ~100+ random appearances) collapsing onto the
+  // single oldest day by sheer chance.
   const demoCustomers = Array.from({ length: 6 }, (_, i) => `demo-customer-${i}@example.com`);
+  const acquisitionOffsets = [87, 87, 50, 50, 12, 12];
 
   const now = Date.now();
   const orders = [];
-  for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
+  for (let dayOffset = 0; dayOffset < 90; dayOffset++) {
     const dayCount = 3 + Math.floor(Math.random() * 8);
+    const eligibleCustomers = demoCustomers.filter((_, idx) => dayOffset <= acquisitionOffsets[idx]);
     for (let i = 0; i < dayCount; i++) {
       const gross = Math.round((20 + Math.random() * 130) * 100) / 100;
       const time = new Date(now - dayOffset * 86400000 - Math.random() * 86400000);
-      orders.push({
+      const order = {
         time: time.toISOString(),
         order_id: `order-${dayOffset}-${Math.floor(Math.random() * 9000 + 1000)}`,
         gross_amount: gross,
@@ -1124,14 +1211,38 @@ async function seedDemoData(storeId) {
         currency: "USD",
         attribution_utm_source: ["meta", "google", "organic"][Math.floor(Math.random() * 3)],
         attribution_utm_campaign: "demo-campaign",
-        customer_email: demoCustomers[Math.floor(Math.random() * demoCustomers.length)],
-      });
+      };
+      if (eligibleCustomers.length) {
+        order.customer_email = eligibleCustomers[Math.floor(Math.random() * eligibleCustomers.length)];
+      }
+      orders.push(order);
     }
   }
+  // Force one order exactly on each customer's acquisition day — the random
+  // per-day assignment above makes it likely but not guaranteed, and a
+  // reliable demo needs every cohort month to actually show up.
+  demoCustomers.forEach((email, idx) => {
+    const dayOffset = acquisitionOffsets[idx];
+    const gross = Math.round((20 + Math.random() * 130) * 100) / 100;
+    const time = new Date(now - dayOffset * 86400000 - Math.random() * 3600000);
+    orders.push({
+      time: time.toISOString(),
+      order_id: `order-acq-${idx}`,
+      gross_amount: gross,
+      discounts: 0,
+      shipping_fee: 4.99,
+      payment_gateway_fee: Math.round((gross * 0.029 + 0.3) * 100) / 100,
+      cogs_total: Math.round(gross * 0.25 * 100) / 100,
+      currency: "USD",
+      attribution_utm_source: ["meta", "google", "organic"][Math.floor(Math.random() * 3)],
+      attribution_utm_campaign: "demo-campaign",
+      customer_email: email,
+    });
+  });
   await api(`/stores/${storeId}/orders`, { method: "POST", body: orders });
 
   const adSpend = [];
-  for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
+  for (let dayOffset = 0; dayOffset < 90; dayOffset++) {
     const day = new Date(now - dayOffset * 86400000);
     day.setHours(0, 0, 0, 0);
     for (const platform of ["meta", "google"]) {

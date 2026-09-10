@@ -628,8 +628,10 @@ The `sync_google_ad_spend` endpoint automatically refreshes expired tokens.
 18. ✅ Creative-level (ad-level) performance for Meta/Google, ranked by spend
 19. ✅ Customer identity foundation (hash-only, deduplicated `customers`
     table linked from every order-ingestion path)
-20. ⏳ Password strength meter
-21. ⏳ LTV/cohorts, CAC payback, product journeys (now unblocked by #19)
-22. ⏳ Creative-level revenue/ROAS attribution (needs ad_id/creative_id on
+20. ✅ LTV by cohort + blended CAC payback (`/metrics/ltv-cohorts` +
+    dashboard cohort-grid widget)
+21. ⏳ Password strength meter
+22. ⏳ Per-channel CAC, product journeys (now unblocked by #19/#20)
+23. ⏳ Creative-level revenue/ROAS attribution (needs ad_id/creative_id on
     `orders`, not just utm_source/utm_campaign)
-21. ⏳ Creative thumbnails (needs a per-creative API call on both platforms)
+24. ⏳ Creative thumbnails (needs a per-creative API call on both platforms)

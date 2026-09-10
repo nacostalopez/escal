@@ -34,3 +34,16 @@ class CreativeMetricOut(BaseModel):
     ctr: float | None
     cpc: float | None
     cpm: float | None
+
+
+class CohortLtvOut(BaseModel):
+    cohort_month: date
+    new_customers: int
+    # Blended spend / new_customers for the cohort's acquisition month; null
+    # when there's no ad_spend data for that month.
+    cac: float | None
+    # Cumulative avg net profit per customer; index 0 = acquisition month.
+    ltv_by_month: list[float]
+    # First index where ltv_by_month >= cac; null if never (within the
+    # window) or if cac itself is null.
+    payback_month: int | None

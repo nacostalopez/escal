@@ -287,6 +287,7 @@ async def shopify_webhook(
                 customer_email,
                 customer_phone,
                 external_customer_id,
+                order_time=order_data["time"],
             )
             row = {"store_id": store_id, **order_data}
             stmt = pg_insert(orders_table).values([row])
@@ -921,6 +922,7 @@ async def tiendanube_webhook(
                 customer_email,
                 customer_phone,
                 external_customer_id,
+                order_time=order_data["time"],
             )
             row = {"store_id": store_id, **order_data}
             stmt = pg_insert(orders_table).values([row])

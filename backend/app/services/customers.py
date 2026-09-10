@@ -39,6 +39,7 @@ def resolve_customer_id(
     email: str | None,
     phone: str | None,
     external_customer_id: str | None = None,
+    order_time: datetime | None = None,
 ) -> UUID | None:
     """Find-or-create the Customer for this store matching the given
     email/phone, and return its id. Returns None if neither is given — the
@@ -47,12 +48,20 @@ def resolve_customer_id(
     Email is the primary dedup key; phone is only used to match when no
     email is present (a customer could plausibly share a phone with someone
     else in edge cases, but not an email).
+
+    first_order_at tracks the order's own timestamp (order_time), not
+    ingestion time — connectors and bulk imports routinely backfill past
+    orders, and LTV-by-cohort needs the real acquisition date. If an
+    earlier order for an already-known customer arrives later (backfill
+    landing out of order), first_order_at moves back to match.
     """
     email_hash = _hash_email(email) if email else None
     phone_hash = _hash_phone(phone) if phone else None
 
     if not email_hash and not phone_hash:
         return None
+
+    order_time = order_time or datetime.now(timezone.utc)
 
     existing = None
     if email_hash:
@@ -67,6 +76,8 @@ def resolve_customer_id(
             existing.phone_hash = phone_hash
         if external_customer_id and not existing.external_customer_id:
             existing.external_customer_id = external_customer_id
+        if not existing.first_order_at or order_time < existing.first_order_at:
+            existing.first_order_at = order_time
         return existing.id
 
     customer = Customer(
@@ -74,7 +85,7 @@ def resolve_customer_id(
         email_hash=email_hash,
         phone_hash=phone_hash,
         external_customer_id=external_customer_id,
-        first_order_at=datetime.now(timezone.utc),
+        first_order_at=order_time,
     )
     db.add(customer)
     db.flush()  # populate customer.id without requiring a separate commit

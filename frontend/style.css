@@ -555,6 +555,26 @@ a:hover { text-decoration: underline; }
 .platform-badge.platform-meta { background: var(--highlight); color: var(--primary); }
 .platform-badge.platform-google { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
 
+/* LTV by cohort + CAC payback */
+.widget-info { color: var(--muted); font-size: 12px; margin: -4px 0 12px; }
+.ltv-cohorts-table-wrap { overflow-x: auto; }
+.ltv-cohorts-table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+.ltv-cohorts-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 0 12px 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ltv-cohorts-table td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--border); }
+.ltv-cohorts-table tr:last-child td { border-bottom: none; }
+.ltv-cohorts-table th:not(:first-child), .ltv-cohorts-table td:not(:first-child) { text-align: right; }
+.ltv-payback-cell { color: var(--positive); font-weight: 700; }
+.ltv-payback-pending { color: var(--muted); font-size: 12px; }
+
 /* Modal */
 .modal {
   position: fixed;

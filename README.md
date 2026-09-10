@@ -217,6 +217,34 @@ This ships only the identity foundation — no LTV/cohort/CAC endpoints or
 UI yet; those are a natural follow-up now that this exists (see
 "Status / next steps").
 
+### LTV by cohort + CAC payback
+
+`GET /stores/{id}/metrics/ltv-cohorts?start=&end=&months=` groups customers
+by the calendar month of `first_order_at` (a "cohort") and, for each,
+returns a cumulative-LTV curve (avg `net_profit` per customer, month 0 =
+acquisition month through `months - 1`, default 6) alongside a **blended**
+CAC (total `ad_spend` in the cohort's acquisition month / new customers
+that month) and a `payback_month` — the first month-offset where cumulative
+LTV crosses CAC, or `null` if it hasn't (yet, or ever, if there's no spend
+data for that month). The dashboard's "LTV por cohorte y CAC payback"
+widget (add it via "Personalizar") renders this as a grid.
+
+One thing that's genuinely different from every other `/metrics/*`
+endpoint here: `start`/`end` filter which **cohorts** to include (by
+`first_order_at`), not which orders — each cohort's curve looks forward
+from its own acquisition month regardless of `end`. A cohort acquired last
+week can only ever show one populated month, and that's correct
+cohort-analysis behavior, not a bug (the widget shows a one-line reminder
+of this under its title).
+
+Deliberately simplified for this first pass, same spirit as Creative
+Analytics scoping out ad-level attribution:
+
+- CAC is blended, not per-channel — no multi-touch attribution.
+- LTV is `net_profit` (contribution margin), not gross revenue.
+- No product-journey or repeat-purchase-interval data yet, just the
+  cohort/CAC-payback pair.
+
 ## API overview
 
 - `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
@@ -251,6 +279,9 @@ UI yet; those are a natural follow-up now that this exists (see
 - `GET /stores/{id}/metrics/creatives?start=&end=` — one row per ad, summed
   over the range and ranked by spend, with CTR/CPC/CPM computed server-side
   (see "Creative analytics" below)
+- `GET /stores/{id}/metrics/ltv-cohorts?start=&end=&months=` — cumulative
+  LTV per acquisition cohort, blended CAC, and payback month (see "LTV by
+  cohort + CAC payback" above)
 - `GET/POST /connectors/{shopify,meta,google,tiendanube,mercadopago}/...` —
   OAuth handshake, ad-spend sync, and (Shopify/Tiendanube) order webhook per
   provider; Meta/Google also get `.../sync-creative-performance` — see `DEVELOPMENT.md`
@@ -267,16 +298,18 @@ Shopify/Meta/Google/Tiendanube/MercadoPago connectors, CI, structured
 logging, rate limiting, env-var validation, webhook e2e tests, multi-user
 accounts with Owner/Admin/Viewer roles, revocable refresh tokens, invite and
 password-reset emails (via SMTP, configurable through env vars), transparent
-frontend token refresh, and hash-only customer identity resolution (every
+frontend token refresh, hash-only customer identity resolution (every
 order-ingestion path links to a deduplicated, PII-free `customers` row —
-see "Customer identity") are done.
+see "Customer identity"), and LTV-by-cohort + blended CAC payback (see
+"LTV by cohort + CAC payback") are done.
 
 The frontend (`frontend/`, plain HTML/CSS/JS, no build step) has been carried
 well past "just enough to see real numbers": ARAMAL brand system with light/
 dark mode, a Spanish (`vos`-register, es-AR-formatted) UI throughout, a
 user-configurable summary board (add/remove/reorder widgets, pick which stat
-is the 2x2 hero, plus an opt-in creative-analytics table ranked by spend —
-see "Dashboard layout" and "Creative analytics" below) with real
+is the 2x2 hero, plus opt-in creative-analytics and LTV-by-cohort tables —
+see "Dashboard layout", "Creative analytics", and "LTV by cohort + CAC
+payback" below) with real
 period-over-period deltas, hover tooltips on the daily revenue-vs-spend
 chart, a full Equipo (team) screen for the invite/role/remove routes above
 (including a "Reenviar" action for a pending invite), an invite-link landing
@@ -291,10 +324,10 @@ flow (`index.html?invite_token=...`), and a forgot/reset-password flow
   granularity, so that would need a deeper attribution pipeline change.
 - No thumbnail images in the creative-performance table (see "Creative
   analytics" below for why).
-- No LTV/cohort, CAC-payback, or product-journey endpoints or UI yet —
-  "Customer identity" below only ships the foundation (deduplicated
-  `customers` rows linked from `orders`) those features need; building them
-  is the natural next step now that it exists.
+- No per-channel CAC or product-journey endpoints/UI yet — "LTV by cohort +
+  CAC payback" above ships blended (not per-channel) CAC and an LTV curve
+  only; multi-touch attribution and purchase-sequence analysis are natural
+  next steps on top of the same `customers` foundation.
 - Pre-existing, unrelated to any feature above: `MetaConnector`/
   `GoogleAdsConnector` are constructed without an `ad_account_id`/
   `customer_id` in `routes/connectors.py`'s sync routes (both `sync-ad-spend`

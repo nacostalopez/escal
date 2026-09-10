@@ -30,7 +30,7 @@ def ingest_orders(
         data = item.model_dump()
         email = data.pop("customer_email")
         phone = data.pop("customer_phone")
-        data["customer_id"] = resolve_customer_id(db, store.id, email, phone)
+        data["customer_id"] = resolve_customer_id(db, store.id, email, phone, order_time=data["time"])
         rows.append({"store_id": store.id, **data})
 
     stmt = pg_insert(orders_table).values(rows)

@@ -158,6 +158,27 @@ class TestOwnershipScoping:
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "Store not found" in response.json()["detail"]
 
+    def test_ltv_cohorts_ownership_check(self, client, other_account, auth_header, test_db_session):
+        """Test that the ltv-cohorts endpoint checks ownership."""
+        from app.models import Store
+
+        other_store = Store(
+            id=uuid4(),
+            account_id=other_account.id,
+            name="Other Account Store",
+            platform="shopify",
+        )
+        test_db_session.add(other_store)
+        test_db_session.commit()
+
+        response = client.get(
+            f"/stores/{other_store.id}/metrics/ltv-cohorts?start=2026-01-01T00:00:00Z&end=2026-01-31T00:00:00Z",
+            headers=auth_header,
+        )
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert "Store not found" in response.json()["detail"]
+
     def test_connector_auth_url_ownership_check(self, client, other_account, auth_header, test_db_session):
         """Connector OAuth routes must go through the same ownership check as data routes."""
         from app.models import Store

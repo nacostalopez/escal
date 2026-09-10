@@ -14,6 +14,7 @@ WidgetType = Literal[
     "chart_daily",
     "connector_status",
     "creative_performance",
+    "ltv_cohorts",
 ]
 
 DEFAULT_WIDGETS = [
