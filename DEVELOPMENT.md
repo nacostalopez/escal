@@ -626,7 +626,10 @@ The `sync_google_ad_spend` endpoint automatically refreshes expired tokens.
 16. ✅ "Resend invite" action (fresh token + expiry, Equipo screen)
 17. ✅ Configurable summary board (per-user widget add/remove/reorder/hero)
 18. ✅ Creative-level (ad-level) performance for Meta/Google, ranked by spend
-19. ⏳ Password strength meter
-20. ⏳ Creative-level revenue/ROAS attribution (needs ad_id/creative_id on
+19. ✅ Customer identity foundation (hash-only, deduplicated `customers`
+    table linked from every order-ingestion path)
+20. ⏳ Password strength meter
+21. ⏳ LTV/cohorts, CAC payback, product journeys (now unblocked by #19)
+22. ⏳ Creative-level revenue/ROAS attribution (needs ad_id/creative_id on
     `orders`, not just utm_source/utm_campaign)
 21. ⏳ Creative thumbnails (needs a per-creative API call on both platforms)

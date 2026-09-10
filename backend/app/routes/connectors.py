@@ -30,6 +30,7 @@ from app.models import (
 )
 from app.rate_limit import limiter
 from app.security import create_oauth_state_token, decrypt_secret, encrypt_secret, hash_token
+from app.services.customers import resolve_customer_id
 
 logger = logging.getLogger("escal.connectors")
 
@@ -277,6 +278,16 @@ async def shopify_webhook(
             from app.models import orders as orders_table
 
             order_data.pop("net_profit", None)  # generated column — Postgres computes this
+            customer_email = order_data.pop("customer_email", None)
+            customer_phone = order_data.pop("customer_phone", None)
+            external_customer_id = order_data.pop("external_customer_id", None)
+            order_data["customer_id"] = resolve_customer_id(
+                db,
+                store_id,
+                customer_email,
+                customer_phone,
+                external_customer_id,
+            )
             row = {"store_id": store_id, **order_data}
             stmt = pg_insert(orders_table).values([row])
             update_cols = {
@@ -901,6 +912,16 @@ async def tiendanube_webhook(
             from app.models import orders as orders_table
 
             order_data.pop("net_profit", None)  # generated column — Postgres computes this
+            customer_email = order_data.pop("customer_email", None)
+            customer_phone = order_data.pop("customer_phone", None)
+            external_customer_id = order_data.pop("external_customer_id", None)
+            order_data["customer_id"] = resolve_customer_id(
+                db,
+                store_id,
+                customer_email,
+                customer_phone,
+                external_customer_id,
+            )
             row = {"store_id": store_id, **order_data}
             stmt = pg_insert(orders_table).values([row])
             update_cols = {

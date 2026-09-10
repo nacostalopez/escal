@@ -18,6 +18,14 @@ orders = Table(
     Column("currency", String(3), nullable=False),
     Column("attribution_utm_source", String(100)),
     Column("attribution_utm_campaign", String(100)),
+    # Nullable — an order with neither email nor phone has no linked
+    # customer. See app/services/customers.py::resolve_customer_id. No FK
+    # constraint, same as store_id above — Customer is ORM-managed and gets
+    # created/dropped fresh every pytest session, while orders (a hypertable
+    # Core Table, never touched by Base.metadata.create_all/drop_all)
+    # persists across test runs; a real FK would make test teardown fail
+    # (Postgres refuses to drop customers while orders still references it).
+    Column("customer_id", UUID(as_uuid=True)),
 )
 
 pixel_events = Table(

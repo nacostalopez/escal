@@ -180,6 +180,43 @@ computes CTR/CPC/CPM server-side, and ranks by spend descending — this is
 what the dashboard's "Performance por creativo" widget (add it via
 "Personalizar" — it's not in the default layout) renders as a table.
 
+### Customer identity
+
+`orders` had no concept of "customer" at all — every row was anonymous, no
+email/phone, no stable id linking two orders from the same buyer. That
+blocks any LTV, cohort, repeat-purchase, or CAC-payback feature, since none
+of those can be built without first knowing "these two orders are the same
+person." `app/services/customers.py::resolve_customer_id()` is the one
+place that gets solved: every order-ingestion path (bulk
+`POST /stores/{id}/orders`, Shopify webhook, Tiendanube webhook) calls it
+with whatever email/phone it has, and it finds-or-creates the matching
+`customers` row and returns its id to store on the order.
+
+**Hash-only, no plaintext PII at rest** — deliberately extending the same
+convention `pixel_events.user_email_hash` already established, rather than
+storing anything decryptable:
+
+- Email is normalized (trim + lowercase) and phone (digits only, no leading
+  zeros) the same way Meta/Google Conversions APIs expect before SHA-256
+  hashing, so `customers.email_hash`/`phone_hash` would already be
+  CAPI-ready if that gets built later, with no separate re-hash needed.
+- None of LTV-by-cohort, CAC payback, or product journeys need to *display*
+  an actual email anywhere — a stable hash fully covers dedup.
+- Storing zero reversible PII means no "right to erasure" complexity for a
+  product whose merchants' end-customers never consented to Escal
+  specifically.
+
+`orders.customer_id` intentionally has **no FK constraint** to
+`customers.id` (same as `orders.store_id` having none either) — `Customer`
+is an ORM-managed table (gets created/dropped fresh every test session),
+while `orders` is a hypertable that persists across test runs untouched;
+a real FK there would make `Base.metadata.drop_all()` fail at every test
+teardown once a single row existed referencing it.
+
+This ships only the identity foundation — no LTV/cohort/CAC endpoints or
+UI yet; those are a natural follow-up now that this exists (see
+"Status / next steps").
+
 ## API overview
 
 - `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
@@ -197,7 +234,9 @@ what the dashboard's "Performance por creativo" widget (add it via
 - `POST /stores`, `GET /stores`, `GET /stores/{id}`,
   `PUT /stores/{id}/credentials` (OAuth tokens per provider, encrypted at rest)
 - `PUT /stores/{id}/products` (bulk upsert by `external_id`, carries COGS/shipping cost)
-- `POST /stores/{id}/orders` (bulk ingest/upsert), `GET /stores/{id}/orders?start=&end=`
+- `POST /stores/{id}/orders` (bulk ingest/upsert, accepts optional
+  `customer_email`/`customer_phone` resolved server-side to `customer_id` —
+  see "Customer identity"), `GET /stores/{id}/orders?start=&end=`
 - `POST /stores/{id}/pixel-events` (bulk ingest), `GET /stores/{id}/pixel-events?...`
 - `POST /stores/{id}/ad-spend` (bulk ingest), `GET /stores/{id}/ad-spend?...`
 - `POST /stores/{id}/creative-performance` (bulk ingest), `GET /stores/{id}/creative-performance?...`
@@ -227,8 +266,10 @@ Schema, ingestion, profit/ROAS math, auth/credential-encryption,
 Shopify/Meta/Google/Tiendanube/MercadoPago connectors, CI, structured
 logging, rate limiting, env-var validation, webhook e2e tests, multi-user
 accounts with Owner/Admin/Viewer roles, revocable refresh tokens, invite and
-password-reset emails (via SMTP, configurable through env vars), and
-transparent frontend token refresh are done.
+password-reset emails (via SMTP, configurable through env vars), transparent
+frontend token refresh, and hash-only customer identity resolution (every
+order-ingestion path links to a deduplicated, PII-free `customers` row —
+see "Customer identity") are done.
 
 The frontend (`frontend/`, plain HTML/CSS/JS, no build step) has been carried
 well past "just enough to see real numbers": ARAMAL brand system with light/
@@ -250,6 +291,10 @@ flow (`index.html?invite_token=...`), and a forgot/reset-password flow
   granularity, so that would need a deeper attribution pipeline change.
 - No thumbnail images in the creative-performance table (see "Creative
   analytics" below for why).
+- No LTV/cohort, CAC-payback, or product-journey endpoints or UI yet —
+  "Customer identity" below only ships the foundation (deduplicated
+  `customers` rows linked from `orders`) those features need; building them
+  is the natural next step now that it exists.
 - Pre-existing, unrelated to any feature above: `MetaConnector`/
   `GoogleAdsConnector` are constructed without an `ad_account_id`/
   `customer_id` in `routes/connectors.py`'s sync routes (both `sync-ad-spend`

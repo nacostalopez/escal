@@ -10,6 +10,7 @@ from app.dependencies import get_owned_store, require_role
 from app.models import Store, User
 from app.models import orders as orders_table
 from app.schemas.orders import OrderCreate, OrderOut
+from app.services.customers import resolve_customer_id
 
 router = APIRouter(prefix="/stores/{store_id}/orders", tags=["orders"])
 
@@ -24,7 +25,14 @@ def ingest_orders(
     if not payload:
         return {"inserted": 0}
 
-    rows = [{"store_id": store.id, **item.model_dump()} for item in payload]
+    rows = []
+    for item in payload:
+        data = item.model_dump()
+        email = data.pop("customer_email")
+        phone = data.pop("customer_phone")
+        data["customer_id"] = resolve_customer_id(db, store.id, email, phone)
+        rows.append({"store_id": store.id, **data})
+
     stmt = pg_insert(orders_table).values(rows)
     update_cols = {
         c.name: stmt.excluded[c.name]

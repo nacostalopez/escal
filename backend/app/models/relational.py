@@ -133,3 +133,19 @@ class Product(Base):
     shipping_cost = Column(Numeric(12, 4), default=0.0)
 
     store = relationship("Store", back_populates="products")
+
+
+class Customer(Base):
+    __tablename__ = "customers"
+    __table_args__ = (UniqueConstraint("store_id", "email_hash", name="uq_customers_store_email"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id = Column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
+    # SHA-256 hex, normalized the same way Meta/Google Conversions APIs
+    # expect (see app/services/customers.py) — no plaintext email/phone is
+    # ever stored, matching the pixel_events.user_email_hash convention.
+    email_hash = Column(String(64))
+    phone_hash = Column(String(64))
+    external_customer_id = Column(String(255))
+    first_order_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

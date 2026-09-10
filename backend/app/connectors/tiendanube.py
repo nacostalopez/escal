@@ -1,4 +1,5 @@
 """Tiendanube connector implementation."""
+
 import base64
 import hashlib
 import hmac
@@ -14,6 +15,7 @@ from app.connectors import BaseConnector, OAuthToken
 
 class TiendanubeSettings(BaseSettings):
     """Tiendanube-specific configuration."""
+
     tiendanube_client_id: str = ""
     tiendanube_client_secret: str = ""
     tiendanube_redirect_uri: str = "http://localhost:3000/auth/tiendanube/callback"
@@ -153,6 +155,8 @@ class TiendanubeConnector(BaseConnector):
             utm_source = query.get("utm_source", [None])[0]
             utm_campaign = query.get("utm_campaign", [None])[0]
 
+        customer = tn_order.get("customer") or {}
+
         return {
             "order_id": str(tn_order["id"]),
             "time": tn_order.get("created_at", datetime.utcnow().isoformat()),
@@ -165,6 +169,9 @@ class TiendanubeConnector(BaseConnector):
             "currency": tn_order.get("currency", "USD"),
             "attribution_utm_source": utm_source,
             "attribution_utm_campaign": utm_campaign,
+            "customer_email": customer.get("email"),
+            "customer_phone": customer.get("phone"),
+            "external_customer_id": str(customer["id"]) if customer.get("id") else None,
         }
 
     def fetch_historical_data(self, start_date: datetime, end_date: datetime, access_token: str):

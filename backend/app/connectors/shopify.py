@@ -1,4 +1,5 @@
 """Shopify connector implementation."""
+
 import base64
 import hashlib
 import hmac
@@ -14,6 +15,7 @@ from app.connectors import BaseConnector, OAuthToken
 
 class ShopifySettings(BaseSettings):
     """Shopify-specific configuration."""
+
     shopify_api_key: str = ""
     shopify_api_secret: str = ""
     shopify_redirect_uri: str = "http://localhost:3000/auth/shopify/callback"
@@ -40,10 +42,10 @@ class ShopifyConnector(BaseConnector):
 
     def get_oauth_url(self, state: str) -> str:
         """Get OAuth authorization URL.
-        
+
         Args:
             state: CSRF token for security
-            
+
         Returns:
             Authorization URL to redirect user to
         """
@@ -62,29 +64,29 @@ class ShopifyConnector(BaseConnector):
 
     def exchange_auth_code(self, code: str, redirect_uri: str, shop: str) -> OAuthToken:
         """Exchange authorization code for access token.
-        
+
         Args:
             code: Authorization code from Shopify
             redirect_uri: Redirect URI used in auth request
             shop: Shop domain (e.g., "mystore.myshopify.com")
-            
+
         Returns:
             OAuthToken with access_token
         """
         url = f"https://{shop}/admin/oauth/access_token"
-        
+
         payload = {
             "client_id": self.settings.shopify_api_key,
             "client_secret": self.settings.shopify_api_secret,
             "code": code,
             "redirect_uri": redirect_uri,
         }
-        
+
         response = requests.post(url, json=payload)
         response.raise_for_status()
-        
+
         data = response.json()
-        
+
         # Shopify doesn't return expiry for access tokens (they don't expire)
         # but refresh tokens expire in 6 months
         return OAuthToken(
@@ -95,13 +97,13 @@ class ShopifyConnector(BaseConnector):
 
     def validate_webhook_signature(self, body: str, signature: str) -> bool:
         """Validate webhook signature.
-        
+
         Shopify sends X-Shopify-Hmac-SHA256 header with HMAC-SHA256 of the body.
-        
+
         Args:
             body: Raw webhook body (as string)
             signature: Value from X-Shopify-Hmac-SHA256 header
-            
+
         Returns:
             True if signature is valid
         """
@@ -111,16 +113,16 @@ class ShopifyConnector(BaseConnector):
             hashlib.sha256,
         ).digest()
         calculated_b64 = base64.b64encode(calculated).decode()
-        
+
         return hmac.compare_digest(calculated_b64, signature)
 
     def process_webhook(self, event_type: str, data: dict) -> dict:
         """Process webhook event.
-        
+
         Args:
             event_type: Shopify event type (e.g., "orders/create")
             data: Webhook payload
-            
+
         Returns:
             Standardized data for ingestion
         """
@@ -131,46 +133,45 @@ class ShopifyConnector(BaseConnector):
 
     def _process_order_webhook(self, shopify_order: dict) -> dict:
         """Convert Shopify order to standardized format.
-        
+
         Args:
             shopify_order: Order object from Shopify webhook
-            
+
         Returns:
             Standardized order data
         """
         # Calculate net profit: revenue - cogs - shipping - fees
         gross_amount = float(shopify_order.get("total_price", 0))
         discounts = float(shopify_order.get("total_discounts", 0))
-        shipping_fee = sum(
-            float(line.get("price", 0))
-            for line in shopify_order.get("shipping_lines", [])
-        )
-        
+        shipping_fee = sum(float(line.get("price", 0)) for line in shopify_order.get("shipping_lines", []))
+
         # Attempt to extract gateway fee from transactions
         gateway_fee = 0
         for transaction in shopify_order.get("transactions", []):
             if transaction.get("kind") == "capture" and transaction.get("gateway_fee"):
                 gateway_fee += float(transaction.get("gateway_fee", 0))
-        
+
         # Try to calculate COGS from line items
         cogs_total = 0
         for line_item in shopify_order.get("line_items", []):
             # This requires product data; we'll fetch it separately
             # For now, assume COGS is provided or we'll calculate it
             pass
-        
+
         net_profit = gross_amount - discounts - shipping_fee - gateway_fee - cogs_total
-        
+
         # Extract UTM parameters from note or tags
         utm_source = None
         utm_campaign = None
-        
+
         note = shopify_order.get("note", "")
         if "utm_source=" in note:
             utm_source = note.split("utm_source=")[1].split("&")[0]
         if "utm_campaign=" in note:
             utm_campaign = note.split("utm_campaign=")[1].split("&")[0]
-        
+
+        customer = shopify_order.get("customer") or {}
+
         return {
             "order_id": str(shopify_order["id"]),
             "time": shopify_order.get("created_at", datetime.utcnow().isoformat()),
@@ -183,16 +184,19 @@ class ShopifyConnector(BaseConnector):
             "currency": shopify_order.get("currency", "USD"),
             "attribution_utm_source": utm_source,
             "attribution_utm_campaign": utm_campaign,
+            "customer_email": customer.get("email"),
+            "customer_phone": customer.get("phone"),
+            "external_customer_id": str(customer["id"]) if customer.get("id") else None,
         }
 
     def fetch_historical_data(self, start_date: datetime, end_date: datetime, access_token: str):
         """Fetch historical orders from Shopify.
-        
+
         Args:
             start_date: Start date for fetching
             end_date: End date for fetching
             access_token: Shopify API access token
-            
+
         Returns:
             List of orders in standardized format
         """
@@ -201,12 +205,12 @@ class ShopifyConnector(BaseConnector):
 
         orders = []
         url = f"{self.API_BASE.format(shop=self.shop_domain.replace('.myshopify.com', ''), version=self.API_VERSION)}/orders.json"
-        
+
         headers = {
             "X-Shopify-Access-Token": access_token,
             "Content-Type": "application/json",
         }
-        
+
         # Shopify API pagination
         params = {
             "status": "any",
@@ -214,16 +218,16 @@ class ShopifyConnector(BaseConnector):
             "created_at_min": start_date.isoformat(),
             "created_at_max": end_date.isoformat(),
         }
-        
+
         while url:
             response = requests.get(url, headers=headers, params=params)
             response.raise_for_status()
-            
+
             data = response.json()
-            
+
             for shopify_order in data.get("orders", []):
                 orders.append(self._process_order_webhook(shopify_order))
-            
+
             # Check for next page (Shopify uses Link header for pagination)
             link_header = response.headers.get("Link", "")
             url = None
@@ -232,7 +236,7 @@ class ShopifyConnector(BaseConnector):
                 next_url = link_header.split('rel="next"')[0].split(",")[-1].strip()
                 if next_url.startswith("<") and next_url.endswith(">"):
                     url = next_url[1:-1]
-            
+
             params = {}  # Clear params for subsequent requests
-        
+
         return orders

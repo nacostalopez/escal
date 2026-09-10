@@ -50,6 +50,10 @@ def main():
     ).json()
     print("products:", [p["title"] for p in products])
 
+    # A small repeat-customer pool (rather than a unique email per order) so
+    # a future cohort/LTV feature has actual repeat-purchase data to show.
+    demo_customers = [f"demo-customer-{i}@example.com" for i in range(6)]
+
     now = datetime.now(timezone.utc)
     orders = []
     for day_offset in range(14):
@@ -69,6 +73,7 @@ def main():
                     "currency": "USD",
                     "attribution_utm_source": random.choice(["meta", "google", "organic"]),
                     "attribution_utm_campaign": "demo-campaign",
+                    "customer_email": random.choice(demo_customers),
                 }
             )
     r = requests.post(f"{BASE_URL}/stores/{store_id}/orders", headers=headers, json=orders)

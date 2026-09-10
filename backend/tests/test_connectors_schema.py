@@ -376,12 +376,30 @@ class TestOrderSchemaConsistency:
             "created_at": "2026-01-01T00:00:00Z",
             "currency": "USD",
             "note": "utm_source=meta&utm_campaign=demo",
+            "customer": {"id": 789, "email": "buyer@example.com", "phone": "+5491112345678"},
         }
         result = connector.process_webhook("orders/create", shopify_order)
         assert ORDER_REQUIRED_FIELDS.issubset(result.keys())
         assert result["order_id"] == "123456"
         assert result["attribution_utm_source"] == "meta"
         assert result["attribution_utm_campaign"] == "demo"
+        assert result["customer_email"] == "buyer@example.com"
+        assert result["customer_phone"] == "+5491112345678"
+        assert result["external_customer_id"] == "789"
+
+    def test_shopify_order_webhook_with_no_customer(self):
+        """A webhook payload with no customer object must not raise."""
+        connector = ShopifyConnector(store_id="store-1")
+        shopify_order = {
+            "id": 123456,
+            "total_price": "100.00",
+            "created_at": "2026-01-01T00:00:00Z",
+            "currency": "USD",
+        }
+        result = connector.process_webhook("orders/create", shopify_order)
+        assert result["customer_email"] is None
+        assert result["customer_phone"] is None
+        assert result["external_customer_id"] is None
 
     def test_tiendanube_order_webhook_shape(self):
         connector = TiendanubeConnector(store_id="store-1")
@@ -393,9 +411,13 @@ class TestOrderSchemaConsistency:
             "created_at": "2026-01-01T00:00:00Z",
             "currency": "USD",
             "landing_url": "https://mystore.com/?utm_source=meta&utm_campaign=demo",
+            "customer": {"id": 321, "email": "buyer@example.com", "phone": "+5491112345678"},
         }
         result = connector.process_webhook("order/created", tn_order)
         assert ORDER_REQUIRED_FIELDS.issubset(result.keys())
         assert result["order_id"] == "654321"
         assert result["attribution_utm_source"] == "meta"
         assert result["attribution_utm_campaign"] == "demo"
+        assert result["customer_email"] == "buyer@example.com"
+        assert result["customer_phone"] == "+5491112345678"
+        assert result["external_customer_id"] == "321"

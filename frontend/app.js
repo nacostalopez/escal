@@ -1102,6 +1102,10 @@ async function seedDemoData(storeId) {
     ],
   });
 
+  // A small repeat-customer pool (rather than a unique email per order) so
+  // a future cohort/LTV feature has actual repeat-purchase data to show.
+  const demoCustomers = Array.from({ length: 6 }, (_, i) => `demo-customer-${i}@example.com`);
+
   const now = Date.now();
   const orders = [];
   for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
@@ -1120,6 +1124,7 @@ async function seedDemoData(storeId) {
         currency: "USD",
         attribution_utm_source: ["meta", "google", "organic"][Math.floor(Math.random() * 3)],
         attribution_utm_campaign: "demo-campaign",
+        customer_email: demoCustomers[Math.floor(Math.random() * demoCustomers.length)],
       });
     }
   }
