@@ -268,15 +268,48 @@ skips entirely if the order has no linked customer (nothing to match on).
 Sends never block the ingestion response — first use of FastAPI's
 `BackgroundTasks` in this codebase.
 
-Like every other connector here, there's **no frontend UI** for this —
-configured via the API only, the same way Meta/Google OAuth credentials
-themselves already are (there's no frontend UI for connecting those
-either). Value sent is `gross_amount` (transaction revenue, what ad
+There's still no dedicated frontend UI for the two CAPI fields themselves
+(`capi_enabled`/`capi_destination_id`) — set them via `PUT /credentials`
+directly. Value sent is `gross_amount` (transaction revenue, what ad
 platforms mean by conversion value), not `net_profit`. No backfill of
 historical orders, no automatic retry on failure — both flagged as
 deliberate v1 simplifications; a failed send stays visible via
 `capi_events.error` and `GET /stores/{id}/connectors/health` (as
 `meta_capi`/`google_capi`) either way.
+
+### Connect flow (Shopify, Meta, Google)
+
+The "Estado de conectores" widget's providers used to be permanently stuck
+on "No conectado" — the backend had full OAuth plumbing
+(`/connectors/{provider}/auth-url`, `/connectors/{provider}/callback`,
+CSRF state tokens) but nothing in the frontend ever called it. Each
+disconnected provider's card now has a "Conectar" button that opens a
+small modal (Shopify needs a shop domain up front; Meta/Google's ad
+account id / Ads customer id are optional and can be filled in on a later
+reconnect), then does the standard OAuth round trip: redirect to the
+provider, provider redirects back, frontend exchanges the code for a
+stored, encrypted credential.
+
+The provider's redirect lands back on `index.html?connector={provider}`
+(plain query params, no dedicated route — nginx here serves static files
+with no SPA fallback) — the same mechanism already used for
+`?invite_token=`/`?reset_token=`. `boot()` in `app.js` picks it up,
+completes the callback call, and refreshes the connector widget.
+
+Fixed alongside this: `ad_account_id` (Meta) and `customer_id` (Google)
+were accepted as OAuth-callback params but never saved anywhere, so any
+sync call after connecting would 400 with "ad_account_id required" — this
+was the "pre-existing gap" this README used to flag. Both now persist to
+`StoreCredential.provider_account_id` (same field Tiendanube/MercadoPago
+already used) and every sync route reads it back.
+
+**You need your own developer app with each platform for this to fully
+work** — Shopify Partners, Meta for Developers (Marketing API), Google
+Cloud (OAuth client) + Google Ads API Center (developer token) — see
+`.env.example`'s comments for exactly what to register and which redirect
+URI to use. Without that, the button/modal/redirect mechanics all work
+correctly (verified via Playwright, including the graceful-failure path),
+but the actual provider consent screen and token exchange can't complete.
 
 ## API overview
 
@@ -336,8 +369,9 @@ password-reset emails (via SMTP, configurable through env vars), transparent
 frontend token refresh, hash-only customer identity resolution (every
 order-ingestion path links to a deduplicated, PII-free `customers` row —
 see "Customer identity"), LTV-by-cohort + blended CAC payback (see
-"LTV by cohort + CAC payback"), and the Meta/Google CAPI feedback loop
-(see "CAPI feedback loop") are done.
+"LTV by cohort + CAC payback"), the Meta/Google CAPI feedback loop (see
+"CAPI feedback loop"), and a working Connect flow for Shopify/Meta/Google
+(see "Connect flow (Shopify, Meta, Google)") are done.
 
 The frontend (`frontend/`, plain HTML/CSS/JS, no build step) has been carried
 well past "just enough to see real numbers": ARAMAL brand system with light/
@@ -371,15 +405,12 @@ flow (`index.html?invite_token=...`), and a forgot/reset-password flow
   end-to-end against the real Graph API (with an intentionally invalid
   pixel id, confirming the failure path). Also no EEA consent-mode fields
   (`consent.adUserData`) sent yet on the Google payload.
-- Pre-existing, unrelated to any feature above: `MetaConnector`/
-  `GoogleAdsConnector` are constructed without an `ad_account_id`/
-  `customer_id` in `routes/connectors.py`'s sync routes (both `sync-ad-spend`
-  and the new `sync-creative-performance`), so calling them against a real
-  connected account 400s with "ad_account_id required" /
-  "customer_id required" — `StoreCredential.provider_account_id` exists and
-  looks like where that value belongs, but nothing threads it through yet.
-  Doesn't block anything backed by direct ingestion (bulk POST, demo seed
-  data) since that bypasses these sync routes entirely.
+- The Shopify/Meta/Google "Conectar" flow (see "Connect flow" above) has
+  never completed a real provider consent screen — this dev environment
+  has no registered app with any of the three yet, so `SHOPIFY_API_KEY`
+  etc. are all still placeholders. The mechanics (button, modal, redirect,
+  state-token validation, graceful failure, URL cleanup) are verified via
+  Playwright; the actual OAuth handshake needs real credentials to try.
 - `tests/test_auth.py::TestAuthenticatedRequests::test_get_current_user_no_token`
   expects `403` from `HTTPBearer` with no Authorization header, but the
   installed fastapi/starlette version returns `401` (pre-existing, unrelated

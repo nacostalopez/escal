@@ -319,6 +319,24 @@
     </div>
   </div>
 
+  <!-- Connect provider modal (Shopify/Meta/Google OAuth) -->
+  <div id="connect-provider-modal" class="modal" hidden>
+    <div class="modal-card">
+      <h3 id="connect-provider-title">Conectar</h3>
+      <p id="connect-provider-hint" class="muted"></p>
+      <form id="connect-provider-form">
+        <label>
+          <span id="connect-provider-field-label"></span>
+          <input type="text" id="connect-provider-field" placeholder="" />
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="connect-provider-cancel" class="btn btn-ghost">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Conectar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Invite member modal -->
   <div id="invite-modal" class="modal" hidden>
     <div class="modal-card">

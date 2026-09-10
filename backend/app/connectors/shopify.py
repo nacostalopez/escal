@@ -18,7 +18,10 @@ class ShopifySettings(BaseSettings):
 
     shopify_api_key: str = ""
     shopify_api_secret: str = ""
-    shopify_redirect_uri: str = "http://localhost:3000/auth/shopify/callback"
+    # Lands back on the frontend's index.html (plain query params, no
+    # dedicated route) — nginx here serves static files with no SPA
+    # fallback, so a path like /auth/shopify/callback would 404.
+    shopify_redirect_uri: str = "http://localhost:3000/index.html?connector=shopify"
     shopify_scopes: str = "read_orders,write_orders,read_products,write_products"
 
     class Config:

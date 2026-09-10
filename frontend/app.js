@@ -814,18 +814,141 @@ function renderConnectorGrid(health) {
       let statusText = "No conectado";
       if (info) {
         dotClass = info.last_error ? "error" : "ok";
-        statusText = info.last_error
-          ? `Error: ${info.last_error}`
-          : `Sincronizado ${info.last_synced_at ? new Date(info.last_synced_at).toLocaleString("es-AR") : "—"}`;
+        if (info.last_error) {
+          statusText = `Error: ${info.last_error}`;
+        } else if (info.last_synced_at) {
+          statusText = `Sincronizado ${new Date(info.last_synced_at).toLocaleString("es-AR")}`;
+        } else {
+          // OAuth succeeded but no sync has run yet — distinct from the
+          // "no credential at all" case below.
+          statusText = "Conectado — sin sincronizar aún";
+        }
       }
+      const connectBtn = !info
+        ? `<button type="button" class="btn btn-ghost connector-connect-btn" data-connect-provider="${provider}">Conectar</button>`
+        : "";
       return `
         <div class="connector-card">
           <div class="connector-name"><span class="connector-dot ${dotClass}"></span>${provider}</div>
           <div class="muted">${statusText}</div>
+          ${connectBtn}
         </div>
       `;
     })
     .join("");
+
+  grid.querySelectorAll("[data-connect-provider]").forEach((btn) => {
+    btn.addEventListener("click", () => openConnectModal(btn.dataset.connectProvider));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Connect flow (Shopify/Meta/Google OAuth) — button -> auth-url -> redirect
+// to the provider -> provider redirects back to index.html?connector=... ->
+// handleConnectorCallback() picks it up in boot(). No dedicated backend
+// callback page: nginx here serves static files with no SPA fallback, so
+// the OAuth redirect_uri points straight at index.html (see
+// backend/app/connectors/{shopify,meta,google}.py's *_redirect_uri).
+// ---------------------------------------------------------------------------
+
+const PROVIDER_CONNECT_CONFIG = {
+  shopify: {
+    label: "Shopify",
+    fieldRequired: true,
+    fieldLabel: "Dominio de tu tienda",
+    fieldPlaceholder: "mitienda.myshopify.com",
+    hint: "Necesitamos el dominio de tu tienda para iniciar la conexión con Shopify.",
+  },
+  meta: {
+    label: "Meta",
+    fieldRequired: false,
+    fieldLabel: "ID de cuenta publicitaria (opcional)",
+    fieldPlaceholder: "act_123456789",
+    hint: "Podés completarlo ahora o más adelante volviendo a conectar.",
+  },
+  google: {
+    label: "Google",
+    fieldRequired: false,
+    fieldLabel: "ID de cliente de Google Ads (opcional)",
+    fieldPlaceholder: "123-456-7890",
+    hint: "Podés completarlo ahora o más adelante volviendo a conectar.",
+  },
+};
+
+function openConnectModal(provider) {
+  const cfg = PROVIDER_CONNECT_CONFIG[provider];
+  const modal = document.getElementById("connect-provider-modal");
+  document.getElementById("connect-provider-title").textContent = `Conectar ${cfg.label}`;
+  document.getElementById("connect-provider-hint").textContent = cfg.hint;
+  document.getElementById("connect-provider-field-label").textContent = cfg.fieldLabel;
+  const field = document.getElementById("connect-provider-field");
+  field.value = "";
+  field.placeholder = cfg.fieldPlaceholder;
+  field.required = cfg.fieldRequired;
+  modal.dataset.provider = provider;
+  modal.hidden = false;
+}
+
+document.getElementById("connect-provider-cancel").addEventListener("click", () => {
+  document.getElementById("connect-provider-modal").hidden = true;
+});
+
+document.getElementById("connect-provider-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const modal = document.getElementById("connect-provider-modal");
+  const provider = modal.dataset.provider;
+  const fieldValue = document.getElementById("connect-provider-field").value.trim();
+  const storeId = state.activeStoreId;
+
+  try {
+    const params = new URLSearchParams({ store_id: storeId });
+    if (provider === "shopify") params.set("shop_domain", fieldValue);
+    const { auth_url: authUrl } = await api(`/connectors/${provider}/auth-url?${params}`, { method: "POST" });
+
+    sessionStorage.setItem(
+      "escal_pending_connect",
+      JSON.stringify({ storeId, provider, extraId: fieldValue || null }),
+    );
+    window.location.href = authUrl;
+  } catch (err) {
+    alert(`No se pudo iniciar la conexión: ${err.message}`);
+  }
+});
+
+async function handleConnectorCallback(provider) {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  const oauthState = params.get("state");
+  const shop = params.get("shop");
+
+  // Always clean the URL, even on failure — a refresh must not replay an
+  // already-consumed (and now invalid) state token.
+  history.replaceState(null, "", window.location.pathname);
+
+  const pendingRaw = sessionStorage.getItem("escal_pending_connect");
+  sessionStorage.removeItem("escal_pending_connect");
+  const pending = pendingRaw ? JSON.parse(pendingRaw) : null;
+
+  if (!code || !pending || pending.provider !== provider) {
+    alert("El enlace de conexión no es válido o ya expiró. Probá conectar de nuevo.");
+    return;
+  }
+
+  // So the user lands back on the same store they were connecting, once
+  // boot() continues into enterDashboard() -> loadStores() right after this.
+  state.activeStoreId = pending.storeId;
+
+  try {
+    const callbackParams = new URLSearchParams({ store_id: pending.storeId, code, state: oauthState || "" });
+    if (provider === "shopify") callbackParams.set("shop", shop || "");
+    if (provider === "meta" && pending.extraId) callbackParams.set("ad_account_id", pending.extraId);
+    if (provider === "google" && pending.extraId) callbackParams.set("customer_id", pending.extraId);
+
+    await api(`/connectors/${provider}/callback?${callbackParams}`, { method: "POST" });
+    alert(`${PROVIDER_CONNECT_CONFIG[provider].label} conectado correctamente.`);
+  } catch (err) {
+    alert(`No se pudo completar la conexión con ${PROVIDER_CONNECT_CONFIG[provider].label}: ${err.message}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1305,6 +1428,7 @@ async function seedDemoData(storeId) {
 (async function boot() {
   const inviteToken = getUrlToken("invite_token");
   const resetToken = getUrlToken("reset_token");
+  const connectorProvider = getUrlToken("connector");
 
   if (inviteToken) {
     state.pendingInviteToken = inviteToken;
@@ -1318,6 +1442,7 @@ async function seedDemoData(storeId) {
   }
 
   if (!state.token && !state.refreshToken) return;
+  if (connectorProvider) await handleConnectorCallback(connectorProvider);
   try {
     await enterDashboard();
   } catch (err) {

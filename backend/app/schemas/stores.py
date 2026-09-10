@@ -56,3 +56,6 @@ class StoreCredentialOut(BaseModel):
     expires_at: datetime | None = None
     capi_enabled: bool = False
     capi_destination_id: str | None = None
+    # Shopify shop domain / Meta ad account id / Google Ads customer id —
+    # populated by each provider's OAuth callback, not settable here.
+    provider_account_id: str | None = None

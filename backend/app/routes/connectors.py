@@ -154,6 +154,7 @@ def shopify_oauth_callback(
             existing.access_token = encrypted_token
             existing.refresh_token = encrypt_secret(token.refresh_token) if token.refresh_token else None
             existing.expires_at = token.expires_at
+            existing.provider_account_id = shop
         else:
             credential = StoreCredential(
                 id=uuid4(),
@@ -162,6 +163,7 @@ def shopify_oauth_callback(
                 access_token=encrypted_token,
                 refresh_token=encrypt_secret(token.refresh_token) if token.refresh_token else None,
                 expires_at=token.expires_at,
+                provider_account_id=shop,
             )
             db.add(credential)
 
@@ -369,12 +371,15 @@ def meta_oauth_callback(
 
         if existing:
             existing.access_token = encrypted_token
+            if ad_account_id:
+                existing.provider_account_id = ad_account_id
         else:
             credential = StoreCredential(
                 id=uuid4(),
                 store_id=store_id,
                 provider="meta",
                 access_token=encrypted_token,
+                provider_account_id=ad_account_id,
             )
             db.add(credential)
 
@@ -422,7 +427,7 @@ def sync_meta_ad_spend(
 
     try:
         access_token = decrypt_secret(credential.access_token)
-        connector = MetaConnector(str(store_id))
+        connector = MetaConnector(str(store_id), credential.provider_account_id)
 
         spend_records = connector.fetch_ad_spend(access_token, start_date, end_date)
 
@@ -476,7 +481,7 @@ def sync_meta_creative_performance(
 
     try:
         access_token = decrypt_secret(credential.access_token)
-        connector = MetaConnector(str(store_id))
+        connector = MetaConnector(str(store_id), credential.provider_account_id)
 
         creative_records = connector.fetch_creative_performance(access_token, start_date, end_date)
 
@@ -556,6 +561,8 @@ def google_oauth_callback(
             existing.access_token = encrypted_token
             existing.refresh_token = encrypted_refresh
             existing.expires_at = token.expires_at
+            if customer_id:
+                existing.provider_account_id = customer_id
         else:
             credential = StoreCredential(
                 id=uuid4(),
@@ -564,6 +571,7 @@ def google_oauth_callback(
                 access_token=encrypted_token,
                 refresh_token=encrypted_refresh,
                 expires_at=token.expires_at,
+                provider_account_id=customer_id,
             )
             db.add(credential)
 
@@ -613,7 +621,7 @@ def sync_google_ad_spend(
         access_token = decrypt_secret(credential.access_token)
 
         # Check if token is expired and refresh if needed
-        if credential.expires_at and datetime.utcnow() > credential.expires_at:
+        if credential.expires_at and datetime.now(timezone.utc) > credential.expires_at:
             refresh_token = decrypt_secret(credential.refresh_token) if credential.refresh_token else None
             if refresh_token:
                 try:
@@ -638,7 +646,7 @@ def sync_google_ad_spend(
                     db.commit()
                     raise
 
-        connector = GoogleAdsConnector(str(store_id))
+        connector = GoogleAdsConnector(str(store_id), credential.provider_account_id)
         spend_records = connector.fetch_ad_spend(access_token, start_date, end_date)
 
         # Ingest into ad_spend table
@@ -692,7 +700,7 @@ def sync_google_creative_performance(
     try:
         access_token = decrypt_secret(credential.access_token)
 
-        if credential.expires_at and datetime.utcnow() > credential.expires_at:
+        if credential.expires_at and datetime.now(timezone.utc) > credential.expires_at:
             refresh_token = decrypt_secret(credential.refresh_token) if credential.refresh_token else None
             if refresh_token:
                 try:
@@ -717,7 +725,7 @@ def sync_google_creative_performance(
                     db.commit()
                     raise
 
-        connector = GoogleAdsConnector(str(store_id))
+        connector = GoogleAdsConnector(str(store_id), credential.provider_account_id)
         creative_records = connector.fetch_creative_performance(access_token, start_date, end_date)
 
         from app.models import creative_performance as creative_performance_table
@@ -1068,7 +1076,7 @@ def sync_mercadopago_ad_spend(
         access_token = decrypt_secret(credential.access_token)
 
         # Check if token is expired and refresh if needed
-        if credential.expires_at and datetime.utcnow() > credential.expires_at:
+        if credential.expires_at and datetime.now(timezone.utc) > credential.expires_at:
             refresh_token = decrypt_secret(credential.refresh_token) if credential.refresh_token else None
             if refresh_token:
                 try:

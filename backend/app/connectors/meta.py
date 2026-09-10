@@ -17,7 +17,10 @@ class MetaSettings(BaseSettings):
 
     meta_app_id: str = ""
     meta_app_secret: str = ""
-    meta_redirect_uri: str = "http://localhost:3000/auth/meta/callback"
+    # Lands back on the frontend's index.html (plain query params, no
+    # dedicated route) — nginx here serves static files with no SPA
+    # fallback, so a path like /auth/meta/callback would 404.
+    meta_redirect_uri: str = "http://localhost:3000/index.html?connector=meta"
     meta_scopes: str = "ads_management,ads_read"
 
     class Config:

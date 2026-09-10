@@ -633,8 +633,12 @@ The `sync_google_ad_spend` endpoint automatically refreshes expired tokens.
 21. ✅ CAPI feedback loop (Meta Conversions API + Google Enhanced
     Conversions for Leads, via BackgroundTasks; Google side unverified
     against a real Ads account — see README "CAPI feedback loop")
-22. ⏳ Password strength meter
-23. ⏳ Per-channel CAC, product journeys (now unblocked by #19/#20)
-24. ⏳ Creative-level revenue/ROAS attribution (needs ad_id/creative_id on
+22. ✅ Connect flow for Shopify/Meta/Google ("Conectar" button + OAuth
+    round trip) + fixed the ad_account_id/customer_id persistence gap
+    (`StoreCredential.provider_account_id`) — see README "Connect flow";
+    needs real registered apps to complete a live consent screen
+23. ⏳ Password strength meter
+24. ⏳ Per-channel CAC, product journeys (now unblocked by #19/#20)
+25. ⏳ Creative-level revenue/ROAS attribution (needs ad_id/creative_id on
     `orders`, not just utm_source/utm_campaign)
-25. ⏳ Creative thumbnails (needs a per-creative API call on both platforms)
+26. ⏳ Creative thumbnails (needs a per-creative API call on both platforms)
