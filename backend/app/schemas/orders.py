@@ -15,6 +15,10 @@ class OrderCreate(BaseModel):
     currency: str
     attribution_utm_source: str | None = None
     attribution_utm_campaign: str | None = None
+    utm_medium: str | None = None
+    utm_content: str | None = None
+    click_id: str | None = None
+    landing_url: str | None = None
     # Input-only — resolved server-side to customer_id via
     # app/services/customers.py::resolve_customer_id and never stored as
     # columns themselves (orders only keeps the resulting customer_id).

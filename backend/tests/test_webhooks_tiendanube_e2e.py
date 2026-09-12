@@ -31,7 +31,7 @@ def _order_payload(order_id: int, total: str = "49.99") -> dict:
         "shipping_cost_customer": "5.00",
         "created_at": "2026-02-01T12:00:00Z",
         "currency": "USD",
-        "landing_url": "https://mystore.com/?utm_source=meta&utm_campaign=demo",
+        "landing_url": "https://mystore.com/?utm_source=meta&utm_campaign=demo&utm_medium=cpc&utm_content=v2&gclid=g456",
     }
 
 
@@ -83,6 +83,11 @@ class TestTiendanubeWebhookEndToEnd:
         ).first()
         assert row is not None
         assert float(row.gross_amount) == 49.99
+        assert row.attribution_utm_source == "meta"
+        assert row.utm_medium == "cpc"
+        assert row.utm_content == "v2"
+        assert row.click_id == "g:g456"
+        assert row.landing_url == _order_payload(655001)["landing_url"]
 
         log = test_db_session.query(TiendanubeWebhookLog).filter_by(store_id=tiendanube_store.id).one()
         assert log.status == "processed"

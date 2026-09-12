@@ -384,20 +384,28 @@ period-over-period deltas, hover tooltips on the daily revenue-vs-spend
 chart, a full Equipo (team) screen for the invite/role/remove routes above
 (including a "Reenviar" action for a pending invite), an invite-link landing
 flow (`index.html?invite_token=...`), and a forgot/reset-password flow
-(`index.html?reset_token=...`). Not yet built:
+(`index.html?reset_token=...`), plus an inline password-strength meter on
+the register/reset/accept-invite forms. `orders` now also captures
+`utm_medium`, `utm_content`, a normalized `click_id` (`fb:<fbclid>` /
+`g:<gclid>`), and `landing_url` at ingestion time (`db/init/019_*.sql`,
+both the Shopify and Tiendanube connectors) — groundwork for the two
+attribution gaps below, which still need the join logic itself. Not yet
+built:
 
-- No password strength meter on the frontend.
 - No revenue/ROAS attribution down to the individual ad — creative
   analytics currently shows each platform's own metrics (spend, CTR, CPC,
-  CPM), not net_profit or true ROAS per creative. `orders` only carries
-  `attribution_utm_source`/`attribution_utm_campaign`, nothing at ad/creative
-  granularity, so that would need a deeper attribution pipeline change.
+  CPM), not net_profit or true ROAS per creative. `orders` carries UTM/
+  click-id/landing-url data now, but nothing yet joins it to
+  `creative_performance.ad_id` — that join is the remaining piece of a
+  deeper attribution pipeline change.
 - No thumbnail images in the creative-performance table (see "Creative
   analytics" below for why).
 - No per-channel CAC or product-journey endpoints/UI yet — "LTV by cohort +
   CAC payback" above ships blended (not per-channel) CAC and an LTV curve
-  only; multi-touch attribution and purchase-sequence analysis are natural
-  next steps on top of the same `customers` foundation.
+  only. The attribution fields captured at ingestion (see above) give this
+  a channel to group by; multi-touch attribution and purchase-sequence
+  analysis remain bigger next steps on top of the same `customers`
+  foundation.
 - The Google side of the CAPI feedback loop (`GoogleAdsConnector.send_purchase_conversion`)
   is built against Google's documented Enhanced Conversions for Leads
   request shape but has never been exercised against a real Google Ads
@@ -411,10 +419,6 @@ flow (`index.html?invite_token=...`), and a forgot/reset-password flow
   etc. are all still placeholders. The mechanics (button, modal, redirect,
   state-token validation, graceful failure, URL cleanup) are verified via
   Playwright; the actual OAuth handshake needs real credentials to try.
-- `tests/test_auth.py::TestAuthenticatedRequests::test_get_current_user_no_token`
-  expects `403` from `HTTPBearer` with no Authorization header, but the
-  installed fastapi/starlette version returns `401` (pre-existing, unrelated
-  to any feature above).
 
 Note for `docker compose` users: `FRONTEND_URL` and `SMTP_*` must be set in a
 root-level `.env` (not `backend/.env`) — `docker-compose.yml`'s `backend`

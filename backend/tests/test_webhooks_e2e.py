@@ -34,7 +34,8 @@ def _order_payload(order_id: int, total_price: str = "49.99") -> dict:
         "line_items": [],
         "created_at": "2026-02-01T12:00:00Z",
         "currency": "USD",
-        "note": "utm_source=meta&utm_campaign=demo",
+        "note": "utm_source=meta&utm_campaign=demo&utm_medium=paid_social&utm_content=v1&fbclid=fb123",
+        "landing_site": "/products/demo",
     }
 
 
@@ -69,6 +70,11 @@ class TestShopifyWebhookEndToEnd:
         ).first()
         assert row is not None
         assert float(row.gross_amount) == 49.99
+        assert row.attribution_utm_source == "meta"
+        assert row.utm_medium == "paid_social"
+        assert row.utm_content == "v1"
+        assert row.click_id == "fb:fb123"
+        assert row.landing_url == "/products/demo"
 
         log = test_db_session.query(ShopifyWebhookLog).filter_by(store_id=test_store.id).one()
         assert log.status == "processed"

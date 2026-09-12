@@ -37,6 +37,10 @@ ORDER_REQUIRED_FIELDS = {
     "currency",
     "attribution_utm_source",
     "attribution_utm_campaign",
+    "utm_medium",
+    "utm_content",
+    "click_id",
+    "landing_url",
 }
 
 
@@ -375,7 +379,8 @@ class TestOrderSchemaConsistency:
             "line_items": [],
             "created_at": "2026-01-01T00:00:00Z",
             "currency": "USD",
-            "note": "utm_source=meta&utm_campaign=demo",
+            "note": "utm_source=meta&utm_campaign=demo&utm_medium=paid_social&utm_content=v1&fbclid=fb123",
+            "landing_site": "/products/demo?utm_source=meta",
             "customer": {"id": 789, "email": "buyer@example.com", "phone": "+5491112345678"},
         }
         result = connector.process_webhook("orders/create", shopify_order)
@@ -383,6 +388,10 @@ class TestOrderSchemaConsistency:
         assert result["order_id"] == "123456"
         assert result["attribution_utm_source"] == "meta"
         assert result["attribution_utm_campaign"] == "demo"
+        assert result["utm_medium"] == "paid_social"
+        assert result["utm_content"] == "v1"
+        assert result["click_id"] == "fb:fb123"
+        assert result["landing_url"] == "/products/demo?utm_source=meta"
         assert result["customer_email"] == "buyer@example.com"
         assert result["customer_phone"] == "+5491112345678"
         assert result["external_customer_id"] == "789"
@@ -410,7 +419,7 @@ class TestOrderSchemaConsistency:
             "shipping_cost_customer": "4.99",
             "created_at": "2026-01-01T00:00:00Z",
             "currency": "USD",
-            "landing_url": "https://mystore.com/?utm_source=meta&utm_campaign=demo",
+            "landing_url": "https://mystore.com/?utm_source=meta&utm_campaign=demo&utm_medium=cpc&utm_content=v2&gclid=g456",
             "customer": {"id": 321, "email": "buyer@example.com", "phone": "+5491112345678"},
         }
         result = connector.process_webhook("order/created", tn_order)
@@ -418,6 +427,10 @@ class TestOrderSchemaConsistency:
         assert result["order_id"] == "654321"
         assert result["attribution_utm_source"] == "meta"
         assert result["attribution_utm_campaign"] == "demo"
+        assert result["utm_medium"] == "cpc"
+        assert result["utm_content"] == "v2"
+        assert result["click_id"] == "g:g456"
+        assert result["landing_url"] == tn_order["landing_url"]
         assert result["customer_email"] == "buyer@example.com"
         assert result["customer_phone"] == "+5491112345678"
         assert result["external_customer_id"] == "321"

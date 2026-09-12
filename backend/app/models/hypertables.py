@@ -18,6 +18,10 @@ orders = Table(
     Column("currency", String(3), nullable=False),
     Column("attribution_utm_source", String(100)),
     Column("attribution_utm_campaign", String(100)),
+    Column("utm_medium", String(100)),
+    Column("utm_content", String(100)),
+    Column("click_id", String(255)),
+    Column("landing_url", String(2048)),
     # Nullable — an order with neither email nor phone has no linked
     # customer. See app/services/customers.py::resolve_customer_id. No FK
     # constraint, same as store_id above — Customer is ORM-managed and gets

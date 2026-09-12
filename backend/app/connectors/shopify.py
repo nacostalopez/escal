@@ -5,12 +5,13 @@ import hashlib
 import hmac
 from datetime import datetime
 from typing import Optional
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode
 
 import requests
 from pydantic_settings import BaseSettings
 
 from app.connectors import BaseConnector, OAuthToken
+from app.connectors.attribution import extract_click_id
 
 
 class ShopifySettings(BaseSettings):
@@ -163,15 +164,18 @@ class ShopifyConnector(BaseConnector):
 
         net_profit = gross_amount - discounts - shipping_fee - gateway_fee - cogs_total
 
-        # Extract UTM parameters from note or tags
-        utm_source = None
-        utm_campaign = None
-
-        note = shopify_order.get("note", "")
-        if "utm_source=" in note:
-            utm_source = note.split("utm_source=")[1].split("&")[0]
-        if "utm_campaign=" in note:
-            utm_campaign = note.split("utm_campaign=")[1].split("&")[0]
+        # Extract UTM/click-id parameters from note (this dev environment's
+        # stand-in for Shopify's note_attributes/landing_site, since no real
+        # store is connected yet to see their actual shape).
+        note_params = parse_qs(shopify_order.get("note") or "")
+        utm_source = note_params.get("utm_source", [None])[0]
+        utm_campaign = note_params.get("utm_campaign", [None])[0]
+        utm_medium = note_params.get("utm_medium", [None])[0]
+        utm_content = note_params.get("utm_content", [None])[0]
+        click_id = extract_click_id(
+            {"fbclid": note_params.get("fbclid", [None])[0], "gclid": note_params.get("gclid", [None])[0]}
+        )
+        landing_url = shopify_order.get("landing_site")
 
         customer = shopify_order.get("customer") or {}
 
@@ -187,6 +191,10 @@ class ShopifyConnector(BaseConnector):
             "currency": shopify_order.get("currency", "USD"),
             "attribution_utm_source": utm_source,
             "attribution_utm_campaign": utm_campaign,
+            "utm_medium": utm_medium,
+            "utm_content": utm_content,
+            "click_id": click_id,
+            "landing_url": landing_url,
             "customer_email": customer.get("email"),
             "customer_phone": customer.get("phone"),
             "external_customer_id": str(customer["id"]) if customer.get("id") else None,

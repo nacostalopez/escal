@@ -11,6 +11,7 @@ import requests
 from pydantic_settings import BaseSettings
 
 from app.connectors import BaseConnector, OAuthToken
+from app.connectors.attribution import extract_click_id
 
 
 class TiendanubeSettings(BaseSettings):
@@ -149,11 +150,19 @@ class TiendanubeConnector(BaseConnector):
 
         utm_source = None
         utm_campaign = None
+        utm_medium = None
+        utm_content = None
+        click_id = None
         landing_url = tn_order.get("landing_url") or ""
         if landing_url:
             query = parse_qs(urlparse(landing_url).query)
             utm_source = query.get("utm_source", [None])[0]
             utm_campaign = query.get("utm_campaign", [None])[0]
+            utm_medium = query.get("utm_medium", [None])[0]
+            utm_content = query.get("utm_content", [None])[0]
+            click_id = extract_click_id(
+                {"fbclid": query.get("fbclid", [None])[0], "gclid": query.get("gclid", [None])[0]}
+            )
 
         customer = tn_order.get("customer") or {}
 
@@ -169,6 +178,10 @@ class TiendanubeConnector(BaseConnector):
             "currency": tn_order.get("currency", "USD"),
             "attribution_utm_source": utm_source,
             "attribution_utm_campaign": utm_campaign,
+            "utm_medium": utm_medium,
+            "utm_content": utm_content,
+            "click_id": click_id,
+            "landing_url": landing_url[:2048] if landing_url else None,
             "customer_email": customer.get("email"),
             "customer_phone": customer.get("phone"),
             "external_customer_id": str(customer["id"]) if customer.get("id") else None,
