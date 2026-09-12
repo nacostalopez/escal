@@ -269,6 +269,26 @@ dashboard's "CAC por canal" widget (add it via "Personalizar") renders
 this as a grid, same cohort semantics as "LTV by cohort" above (`start`/
 `end` filter cohorts by `first_order_at`, not orders).
 
+### Forecast (simple linear projection)
+
+`GET /stores/{id}/metrics/forecast?history_days=60&forecast_days=30`
+fits an ordinary-least-squares line to the trailing `history_days` of
+daily revenue/net_profit/ad_spend (reading straight from `orders`/
+`ad_spend`, not the `daily_financial_summary` continuous aggregate — same
+freshness reasoning as `SUMMARY_SQL`) and extrapolates `forecast_days`
+forward. No numpy/pandas/Prophet — just the closed-form OLS formulas in
+`app/services/forecasting.py::linear_forecast`, a plain function with no
+DB dependency. Revenue/ad_spend are clamped to `>= 0`; net_profit isn't,
+since a trend can legitimately project a loss. `true_roas` per forecasted
+day is `net_profit / ad_spend` computed from the two independently-fitted
+series, not its own regression. Returns `days: []` (not an error) with
+under 7 days of real history — a line fit through a handful of points
+would be noise dressed up as a forecast. CAC isn't forecasted here: it's
+a monthly-cohort metric with at most a few data points per channel, too
+few for a trend line to mean anything. The dashboard's "Proyección a 30
+días" widget shows the totals over the forecast window, not a chart per
+day.
+
 ### Proactive alerts
 
 Opt-in per store (`GET`/`PUT /stores/{id}/alert-preferences`, off by
@@ -432,6 +452,9 @@ but the actual provider consent screen and token exchange can't complete.
 - `GET /stores/{id}/metrics/cac-by-channel?start=&end=` — the same cohorts,
   CAC split per acquisition channel instead of blended (see "CAC by channel"
   above)
+- `GET /stores/{id}/metrics/forecast?history_days=&forecast_days=` —
+  simple linear projection of revenue/profit/ad-spend/true-ROAS (see
+  "Forecast (simple linear projection)" above)
 - `GET/PUT /stores/{id}/alert-preferences`, `POST
   /stores/{id}/alert-preferences/check-now` — proactive CAC/ROAS alerts (see
   "Proactive alerts" below)
@@ -458,7 +481,8 @@ frontend token refresh, hash-only customer identity resolution (every
 order-ingestion path links to a deduplicated, PII-free `customers` row —
 see "Customer identity"), LTV-by-cohort + blended CAC payback (see
 "LTV by cohort + CAC payback"), CAC split by acquisition channel (see
-"CAC by channel"), proactive CAC/ROAS email alerts (see "Proactive
+"CAC by channel"), a simple 30-day linear forecast (see "Forecast (simple
+linear projection)"), proactive CAC/ROAS email alerts (see "Proactive
 alerts"), a weekly email summary report (see "Weekly reports"), the
 Meta/Google CAPI feedback loop (see "CAPI feedback loop"), and a working
 Connect flow for Shopify/Meta/Google (see "Connect flow (Shopify, Meta,
@@ -468,9 +492,10 @@ The frontend (`frontend/`, plain HTML/CSS/JS, no build step) has been carried
 well past "just enough to see real numbers": ARAMAL brand system with light/
 dark mode, a Spanish (`vos`-register, es-AR-formatted) UI throughout, a
 user-configurable summary board (add/remove/reorder widgets, pick which stat
-is the 2x2 hero, plus opt-in creative-analytics, LTV-by-cohort, and
-CAC-by-channel tables — see "Dashboard layout", "Creative analytics", "LTV
-by cohort + CAC payback", and "CAC by channel" below) with real
+is the 2x2 hero, plus opt-in creative-analytics, LTV-by-cohort,
+CAC-by-channel, and 30-day forecast widgets — see "Dashboard layout",
+"Creative analytics", "LTV by cohort + CAC payback", "CAC by channel", and
+"Forecast (simple linear projection)" below) with real
 period-over-period deltas, hover tooltips on the daily revenue-vs-spend
 chart, a full Equipo (team) screen for the invite/role/remove routes above
 (including a "Reenviar" action for a pending invite), an invite-link landing

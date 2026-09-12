@@ -58,3 +58,23 @@ class ChannelCacOut(BaseModel):
     # Null when there's no ad_spend for this channel/month.
     spend: float | None
     cac: float | None
+
+
+class ForecastDayOut(BaseModel):
+    day: date
+    # revenue/ad_spend are clamped to >= 0 (can't be negative); net_profit
+    # is not — a linear fit can legitimately project a loss.
+    revenue: float
+    net_profit: float
+    ad_spend: float
+    true_roas: float | None
+
+
+class ForecastOut(BaseModel):
+    # Empty when there's under MIN_FORECAST_HISTORY_DAYS of history — a
+    # trend line from a handful of points would be noise, not signal.
+    days: list[ForecastDayOut]
+    total_revenue: float
+    total_net_profit: float
+    total_ad_spend: float
+    true_roas: float | None

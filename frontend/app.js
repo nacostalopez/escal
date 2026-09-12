@@ -32,6 +32,7 @@ const WIDGET_LABELS = {
   creative_performance: "Performance por creativo",
   ltv_cohorts: "LTV por cohorte y CAC payback",
   cac_by_channel: "CAC por canal",
+  forecast: "Proyección a 30 días",
 };
 const STAT_WIDGET_TYPES = ["stat_roas", "stat_revenue", "stat_net_profit", "stat_ad_spend", "stat_real_profit"];
 const ALL_WIDGET_TYPES = Object.keys(WIDGET_LABELS);
@@ -513,6 +514,7 @@ const PANEL_WIDGET_BODY = {
   creative_performance: { id: "creative-performance-table", class: "creative-table-wrap" },
   ltv_cohorts: { id: "ltv-cohorts-table", class: "ltv-cohorts-table-wrap" },
   cac_by_channel: { id: "cac-by-channel-table", class: "cac-by-channel-table-wrap" },
+  forecast: { id: "forecast-widget", class: "forecast-widget" },
 };
 
 function renderPanelWidgetShell(w) {
@@ -618,6 +620,7 @@ async function persistAndRerenderLayout() {
   await refreshCreativePerformance();
   await refreshLtvCohorts();
   await refreshCacByChannel();
+  await refreshForecast();
   try {
     await api("/dashboard/layout", { method: "PUT", body: { widgets: state.dashboardLayout } });
   } catch (err) {
@@ -632,6 +635,7 @@ function applyCachedMetrics() {
   if (state.lastCreatives) renderCreativeTable(state.lastCreatives);
   if (state.lastCohorts) renderLtvCohortsTable(state.lastCohorts);
   if (state.lastCac) renderCacByChannelTable(state.lastCac);
+  if (state.lastForecast) renderForecastWidget(state.lastForecast);
 }
 
 // ---------------------------------------------------------------------------
@@ -1118,6 +1122,56 @@ function renderCacByChannelTable(rows) {
           .join("")}
       </tbody>
     </table>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Forecast (simple linear projection, next 30 days)
+//
+// Unlike every other widget here, this doesn't follow the dashboard's
+// date-range selector — the forecast always looks at its own trailing
+// history window (see /metrics/forecast's history_days default), so it
+// isn't refetched when "Últimos N días" changes.
+// ---------------------------------------------------------------------------
+
+async function refreshForecast() {
+  if (!document.getElementById("forecast-widget")) return;
+  const data = await api(`/stores/${state.activeStoreId}/metrics/forecast`);
+  state.lastForecast = data;
+  renderForecastWidget(data);
+}
+
+function renderForecastWidget(data) {
+  const container = document.getElementById("forecast-widget");
+  if (!container) return;
+
+  const info = '<p class="widget-info">Proyección lineal simple sobre los últimos días — no es un pronóstico estadístico, solo una extrapolación de la tendencia reciente.</p>';
+
+  if (!data.days.length) {
+    container.innerHTML = info + '<div class="chart-empty">Todavía no hay suficiente historial para proyectar (mínimo una semana de datos).</div>';
+    return;
+  }
+
+  container.innerHTML = `
+    ${info}
+    <div class="forecast-grid">
+      <div class="forecast-stat">
+        <span class="stat-label">Revenue proyectado</span>
+        <span class="stat-value">${fmtMoney(data.total_revenue, state.activeStoreCurrency)}</span>
+      </div>
+      <div class="forecast-stat">
+        <span class="stat-label">Profit neto proyectado</span>
+        <span class="stat-value">${fmtMoney(data.total_net_profit, state.activeStoreCurrency)}</span>
+      </div>
+      <div class="forecast-stat">
+        <span class="stat-label">Gasto en ads proyectado</span>
+        <span class="stat-value">${fmtMoney(data.total_ad_spend, state.activeStoreCurrency)}</span>
+      </div>
+      <div class="forecast-stat">
+        <span class="stat-label">True ROAS proyectado</span>
+        <span class="stat-value">${data.true_roas === null ? "—" : data.true_roas + "x"}</span>
+      </div>
+    </div>
   `;
 }
 

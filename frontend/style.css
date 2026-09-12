@@ -602,6 +602,17 @@ a:hover { text-decoration: underline; }
 .cac-by-channel-table th:not(:first-child), .cac-by-channel-table td:not(:first-child) { text-align: right; }
 .cac-by-channel-table th:nth-child(2), .cac-by-channel-table td:nth-child(2) { text-align: left; }
 
+.forecast-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.forecast-stat {
+  background: var(--highlight);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+@media (max-width: 480px) { .forecast-grid { grid-template-columns: 1fr; } }
+
 /* Modal */
 .modal {
   position: fixed;

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
@@ -7,7 +7,16 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_owned_store
 from app.models import Store
-from app.schemas.metrics import ChannelCacOut, CohortLtvOut, CreativeMetricOut, DailyMetricOut, MetricsSummaryOut
+from app.schemas.metrics import (
+    ChannelCacOut,
+    CohortLtvOut,
+    CreativeMetricOut,
+    DailyMetricOut,
+    ForecastDayOut,
+    ForecastOut,
+    MetricsSummaryOut,
+)
+from app.services.forecasting import linear_forecast
 
 router = APIRouter(prefix="/stores/{store_id}/metrics", tags=["metrics"])
 
@@ -231,6 +240,45 @@ CAC_BY_CHANNEL_SQL = text(
 )
 
 
+# Backing query for /forecast. Deliberately reads straight from
+# orders/ad_spend (like SUMMARY_SQL above) rather than the
+# daily_financial_summary continuous aggregate, which only refreshes on an
+# hourly policy — a forecast built on stale/incomplete recent days would be
+# wrong in a way that's hard to notice. generate_series fills in days with
+# no activity as 0 so the day-index used by linear_forecast lines up with
+# real calendar days (a gap would silently compress the timeline).
+FORECAST_HISTORY_SQL = text(
+    """
+    WITH days AS (
+        SELECT generate_series(date_trunc('day', :start), date_trunc('day', :end), interval '1 day') AS day
+    ),
+    orders_by_day AS (
+        SELECT date_trunc('day', time) AS day, SUM(gross_amount) AS revenue, SUM(net_profit) AS net_profit
+        FROM orders
+        WHERE store_id = :store_id
+          AND time BETWEEN :start AND :end
+        GROUP BY day
+    ),
+    spend_by_day AS (
+        SELECT date_trunc('day', time) AS day, SUM(spend) AS ad_spend
+        FROM ad_spend
+        WHERE store_id = :store_id
+          AND time BETWEEN :start AND :end
+        GROUP BY day
+    )
+    SELECT
+        d.day,
+        COALESCE(o.revenue, 0) AS revenue,
+        COALESCE(o.net_profit, 0) AS net_profit,
+        COALESCE(s.ad_spend, 0) AS ad_spend
+    FROM days d
+    LEFT JOIN orders_by_day o ON o.day = d.day
+    LEFT JOIN spend_by_day s ON s.day = d.day
+    ORDER BY d.day
+    """
+)
+
+
 @router.get("/summary", response_model=MetricsSummaryOut)
 def metrics_summary(
     start: datetime = Query(...),
@@ -335,3 +383,60 @@ def metrics_cac_by_channel(
         db.execute(CAC_BY_CHANNEL_SQL, {"store_id": str(store.id), "start": start, "end": end}).mappings().all()
     )
     return rows
+
+
+# Below this many days of history, a linear fit is more noise than signal —
+# an empty forecast (rather than a wild extrapolation from 2-3 data points)
+# is the honest answer.
+MIN_FORECAST_HISTORY_DAYS = 7
+
+
+@router.get("/forecast", response_model=ForecastOut)
+def metrics_forecast(
+    history_days: int = Query(60, ge=MIN_FORECAST_HISTORY_DAYS, le=365),
+    forecast_days: int = Query(30, ge=1, le=90),
+    store: Store = Depends(get_owned_store),
+    db: Session = Depends(get_db),
+):
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=history_days)
+    rows = (
+        db.execute(FORECAST_HISTORY_SQL, {"store_id": str(store.id), "start": start, "end": end}).mappings().all()
+    )
+
+    days_with_data = sum(1 for r in rows if float(r["revenue"]) or float(r["ad_spend"]))
+    if days_with_data < MIN_FORECAST_HISTORY_DAYS:
+        return ForecastOut(days=[], total_revenue=0.0, total_net_profit=0.0, total_ad_spend=0.0, true_roas=None)
+
+    revenue_history = [float(r["revenue"]) for r in rows]
+    net_profit_history = [float(r["net_profit"]) for r in rows]
+    ad_spend_history = [float(r["ad_spend"]) for r in rows]
+
+    revenue_forecast = [max(0.0, v) for v in linear_forecast(revenue_history, forecast_days)]
+    net_profit_forecast = linear_forecast(net_profit_history, forecast_days)
+    ad_spend_forecast = [max(0.0, v) for v in linear_forecast(ad_spend_history, forecast_days)]
+
+    last_day = rows[-1]["day"]
+    days_out = []
+    for i in range(forecast_days):
+        day = last_day + timedelta(days=i + 1)
+        revenue = revenue_forecast[i]
+        net_profit = net_profit_forecast[i]
+        ad_spend = ad_spend_forecast[i]
+        true_roas = round(net_profit / ad_spend, 2) if ad_spend else None
+        days_out.append(
+            ForecastDayOut(day=day, revenue=revenue, net_profit=net_profit, ad_spend=ad_spend, true_roas=true_roas)
+        )
+
+    total_revenue = sum(d.revenue for d in days_out)
+    total_net_profit = sum(d.net_profit for d in days_out)
+    total_ad_spend = sum(d.ad_spend for d in days_out)
+    total_true_roas = round(total_net_profit / total_ad_spend, 2) if total_ad_spend else None
+
+    return ForecastOut(
+        days=days_out,
+        total_revenue=total_revenue,
+        total_net_profit=total_net_profit,
+        total_ad_spend=total_ad_spend,
+        true_roas=total_true_roas,
+    )
