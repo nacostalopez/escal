@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from app.schemas.accounts import Role
+
 # ISO 4217: always three uppercase Latin letters — rejects things like "AR$"
 # (a currency symbol, not a code) that Intl.NumberFormat on the frontend
 # throws on rather than silently coercing.
@@ -59,3 +61,19 @@ class StoreCredentialOut(BaseModel):
     # Shopify shop domain / Meta ad account id / Google Ads customer id —
     # populated by each provider's OAuth callback, not settable here.
     provider_account_id: str | None = None
+
+
+class StoreMemberOut(BaseModel):
+    id: UUID
+    email: str
+    # The account-wide role vs. what actually applies to this one store —
+    # store_role is null when there's no override (effective_role ==
+    # account_role in that case). See StoreMembership.
+    account_role: Role
+    store_role: Role | None
+    effective_role: Role
+
+
+class StoreMemberRoleIn(BaseModel):
+    # null clears the override, falling back to the account-wide role.
+    role: Role | None = None

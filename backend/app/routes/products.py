@@ -3,7 +3,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_owned_store, require_role
+from app.dependencies import get_owned_store, require_store_role
 from app.models import Product, Store, User
 from app.schemas.products import ProductOut, ProductUpsert
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/stores/{store_id}/products", tags=["products"])
 def upsert_products(
     payload: list[ProductUpsert],
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     if not payload:

@@ -602,6 +602,20 @@ a:hover { text-decoration: underline; }
 .cac-by-channel-table th:not(:first-child), .cac-by-channel-table td:not(:first-child) { text-align: right; }
 .cac-by-channel-table th:nth-child(2), .cac-by-channel-table td:nth-child(2) { text-align: left; }
 
+.audit-log-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.audit-log-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 0 12px 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.audit-log-table td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--border); }
+.audit-log-table tr:last-child td { border-bottom: none; }
+
 .forecast-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .forecast-stat {
   background: var(--highlight);
@@ -628,6 +642,10 @@ a:hover { text-decoration: underline; }
   padding: 22px;
   width: 320px;
 }
+.modal-card-wide { width: 440px; max-width: calc(100vw - 32px); }
+.modal-card-wide .member-row { justify-content: space-between; }
+.modal-card-wide .member-row > div:first-child { flex: 1; min-width: 0; }
+.modal-card-wide .role-select { flex: none; }
 .modal-card form { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
 .modal-card label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
 .modal-card input, .modal-card select {

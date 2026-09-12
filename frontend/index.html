@@ -257,6 +257,8 @@
                 <button id="seed-btn" class="btn btn-ghost">Cargar datos de demo</button>
                 <button id="alerts-btn" class="btn btn-ghost">Alertas</button>
                 <button id="reports-btn" class="btn btn-ghost">Reportes</button>
+                <button id="store-members-btn" class="btn btn-ghost">Miembros</button>
+                <button id="audit-log-btn" class="btn btn-ghost">Auditoría</button>
                 <button id="customize-btn" class="btn btn-ghost">Personalizar</button>
               </div>
             </div>
@@ -379,6 +381,30 @@
           <button type="submit" class="btn btn-primary">Guardar</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Store members modal (per-store role overrides) -->
+  <div id="store-members-modal" class="modal" hidden>
+    <div class="modal-card modal-card-wide">
+      <h3>Miembros de la tienda</h3>
+      <p class="muted">Le podés dar a alguien un rol distinto solo para esta tienda, sin tocar su rol general de cuenta. Solo el owner de la cuenta puede cambiar esto.</p>
+      <div id="store-members-list"></div>
+      <div class="modal-actions">
+        <button type="button" id="store-members-cancel" class="btn btn-ghost">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audit log modal (customer-linked data access) -->
+  <div id="audit-log-modal" class="modal" hidden>
+    <div class="modal-card modal-card-wide">
+      <h3>Auditoría</h3>
+      <p class="muted">Quién consultó los pedidos de esta tienda (el único dato ligado a clientes que se expone hoy) y cuándo.</p>
+      <div id="audit-log-table"></div>
+      <div class="modal-actions">
+        <button type="button" id="audit-log-cancel" class="btn btn-ghost">Cerrar</button>
+      </div>
     </div>
   </div>
 

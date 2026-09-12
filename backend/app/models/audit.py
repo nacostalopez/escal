@@ -70,6 +70,21 @@ class AlertLog(Base):
     sent_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class CustomerDataAccessLog(Base):
+    """Who fetched customer-linked data, and when. The only customer-linked
+    value exposed by any route today is the opaque customer_id UUID via
+    GET /stores/{id}/orders — see app/routes/orders.py::list_orders, the
+    sole place this gets written."""
+
+    __tablename__ = "customer_data_access_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id = Column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    endpoint = Column(String(100), nullable=False)
+    accessed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class OAuthState(Base):
     """CSRF state tokens for the OAuth handshake — issued by */auth-url,
     burned by the matching */callback. See db/init/013_oauth_states.sql."""

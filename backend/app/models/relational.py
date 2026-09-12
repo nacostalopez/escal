@@ -167,6 +167,20 @@ class StoreCredential(Base):
     store = relationship("Store", back_populates="credentials")
 
 
+class StoreMembership(Base):
+    """Per-store role override on top of User.role (account-wide) — a row
+    here overrides the effective role for that one store; no row means the
+    account role applies. See app/dependencies.py::require_store_role."""
+
+    __tablename__ = "store_memberships"
+    __table_args__ = (CheckConstraint("role IN ('owner', 'admin', 'viewer')", name="ck_store_memberships_role"),)
+
+    store_id = Column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role = Column(String(20), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class Product(Base):
     __tablename__ = "products"
     __table_args__ = (UniqueConstraint("store_id", "external_id", name="uq_store_external_id"),)

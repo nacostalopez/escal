@@ -5,7 +5,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_owned_store, require_role
+from app.dependencies import get_owned_store, require_store_role
 from app.models import Store, User
 from app.models import creative_performance as creative_performance_table
 from app.schemas.creative_performance import CreativePerformanceCreate
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/stores/{store_id}/creative-performance", tags=["crea
 def ingest_creative_performance(
     payload: list[CreativePerformanceCreate],
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     if not payload:

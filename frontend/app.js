@@ -1355,6 +1355,125 @@ document.getElementById("report-preferences-send-now").addEventListener("click",
 });
 
 // ---------------------------------------------------------------------------
+// Store members modal (per-store role overrides) — only the account owner
+// can open this successfully; anyone else gets a 403 shown inline.
+// ---------------------------------------------------------------------------
+
+const storeMembersModal = document.getElementById("store-members-modal");
+
+async function openStoreMembersModal() {
+  storeMembersModal.hidden = false;
+  const list = document.getElementById("store-members-list");
+  list.innerHTML = '<p class="muted">Cargando...</p>';
+  try {
+    const members = await api(`/stores/${state.activeStoreId}/members`);
+    renderStoreMembers(members);
+  } catch (err) {
+    list.innerHTML = `<p class="muted">No se pudo cargar: ${err.message}</p>`;
+  }
+}
+
+document.getElementById("store-members-btn").addEventListener("click", openStoreMembersModal);
+document.getElementById("store-members-cancel").addEventListener("click", () => (storeMembersModal.hidden = true));
+
+function renderStoreMembers(members) {
+  const list = document.getElementById("store-members-list");
+  list.innerHTML = members
+    .map(
+      (m) => `
+        <div class="member-row">
+          <div>
+            <div class="member-email">${m.email}</div>
+            <div class="member-meta">Rol de cuenta: ${m.account_role}</div>
+          </div>
+          <select data-store-member-id="${m.id}" class="role-select">
+            <option value="" ${m.store_role === null ? "selected" : ""}>Igual que la cuenta</option>
+            <option value="owner" ${m.store_role === "owner" ? "selected" : ""}>Owner</option>
+            <option value="admin" ${m.store_role === "admin" ? "selected" : ""}>Admin</option>
+            <option value="viewer" ${m.store_role === "viewer" ? "selected" : ""}>Viewer</option>
+          </select>
+        </div>
+      `
+    )
+    .join("");
+
+  list.querySelectorAll("[data-store-member-id]").forEach((select) => {
+    select.addEventListener("change", () => setStoreMemberRole(select.dataset.storeMemberId, select.value));
+  });
+}
+
+async function setStoreMemberRole(userId, role) {
+  try {
+    await api(`/stores/${state.activeStoreId}/members/${userId}`, {
+      method: "PUT",
+      body: { role: role || null },
+    });
+  } catch (err) {
+    alert(err.message);
+  }
+  await openStoreMembersModal();
+}
+
+// ---------------------------------------------------------------------------
+// Audit log modal (who accessed customer-linked order data)
+// ---------------------------------------------------------------------------
+
+const auditLogModal = document.getElementById("audit-log-modal");
+
+function fmtDateTime(iso) {
+  return new Date(iso).toLocaleString("es-AR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+async function openAuditLogModal() {
+  auditLogModal.hidden = false;
+  const container = document.getElementById("audit-log-table");
+  container.innerHTML = '<p class="muted">Cargando...</p>';
+  try {
+    const entries = await api(`/stores/${state.activeStoreId}/orders/audit-log`);
+    renderAuditLogTable(entries);
+  } catch (err) {
+    container.innerHTML = `<p class="muted">No se pudo cargar: ${err.message}</p>`;
+  }
+}
+
+document.getElementById("audit-log-btn").addEventListener("click", openAuditLogModal);
+document.getElementById("audit-log-cancel").addEventListener("click", () => (auditLogModal.hidden = true));
+
+function renderAuditLogTable(entries) {
+  const container = document.getElementById("audit-log-table");
+  if (!entries.length) {
+    container.innerHTML = '<p class="muted">Todavía no hay accesos registrados.</p>';
+    return;
+  }
+  container.innerHTML = `
+    <table class="audit-log-table">
+      <thead>
+        <tr><th>Usuario</th><th>Ruta</th><th>Fecha</th></tr>
+      </thead>
+      <tbody>
+        ${entries
+          .map(
+            (e) => `
+              <tr>
+                <td>${e.user_email}</td>
+                <td>${e.endpoint}</td>
+                <td>${fmtDateTime(e.accessed_at)}</td>
+              </tr>
+            `
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+// ---------------------------------------------------------------------------
 // Members & invites
 // ---------------------------------------------------------------------------
 

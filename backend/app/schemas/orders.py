@@ -30,3 +30,9 @@ class OrderOut(OrderCreate):
     store_id: UUID
     net_profit: float | None = None
     customer_id: UUID | None = None
+
+
+class CustomerDataAccessLogOut(BaseModel):
+    user_email: str
+    endpoint: str
+    accessed_at: datetime

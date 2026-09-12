@@ -5,7 +5,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_owned_store, require_role
+from app.dependencies import get_owned_store, require_store_role
 from app.models import Store, User
 from app.models import ad_spend as ad_spend_table
 from app.schemas.ad_spend import AdSpendCreate
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/stores/{store_id}/ad-spend", tags=["ad-spend"])
 def ingest_ad_spend(
     payload: list[AdSpendCreate],
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     if not payload:

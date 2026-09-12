@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_owned_store, require_role
+from app.dependencies import get_owned_store, require_store_role
 from app.models import Store, StoreAlertPreference, User
 from app.schemas.alerts import AlertCheckResult, AlertPreferencesIn, AlertPreferencesOut
 from app.services.alerts import run_check_for_store
@@ -29,7 +29,7 @@ def get_alert_preferences(store: Store = Depends(get_owned_store), db: Session =
 def set_alert_preferences(
     payload: AlertPreferencesIn,
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     row = db.get(StoreAlertPreference, store.id)
@@ -48,7 +48,7 @@ def set_alert_preferences(
 @router.post("/check-now", response_model=AlertCheckResult)
 def check_alerts_now(
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Runs the same check scripts/run_alert_checks.py runs on a schedule,

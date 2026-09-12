@@ -5,7 +5,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_owned_store, require_role
+from app.dependencies import get_owned_store, require_store_role
 from app.models import Store, User
 from app.models import pixel_events as pixel_events_table
 from app.schemas.pixel_events import PixelEventCreate
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/stores/{store_id}/pixel-events", tags=["pixel-events
 def ingest_pixel_events(
     payload: list[PixelEventCreate],
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     if not payload:

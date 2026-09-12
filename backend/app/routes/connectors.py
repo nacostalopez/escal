@@ -17,7 +17,7 @@ from app.connectors.meta import MetaConnector
 from app.connectors.shopify import ShopifyConnector
 from app.connectors.tiendanube import TiendanubeConnector
 from app.database import get_db
-from app.dependencies import get_owned_store, require_role
+from app.dependencies import get_owned_store, require_store_role
 from app.models import (
     ConnectorStatus,
     OAuthState,
@@ -90,7 +90,7 @@ def _consume_oauth_state(db: Session, store_id: UUID, provider: str, state: Opti
 def get_shopify_auth_url(
     shop_domain: str,
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Get Shopify OAuth authorization URL.
@@ -117,7 +117,7 @@ def shopify_oauth_callback(
     shop: str,
     state: Optional[str] = None,
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Handle Shopify OAuth callback.
@@ -327,7 +327,7 @@ async def shopify_webhook(
 @router.post("/meta/auth-url")
 def get_meta_auth_url(
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Get Meta OAuth authorization URL."""
@@ -347,7 +347,7 @@ def meta_oauth_callback(
     state: Optional[str] = None,
     ad_account_id: Optional[str] = None,
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Handle Meta OAuth callback."""
@@ -403,7 +403,7 @@ def sync_meta_ad_spend(
     start_date: datetime = Query(...),
     end_date: datetime = Query(...),
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Sync ad spend data from Meta."""
@@ -458,7 +458,7 @@ def sync_meta_creative_performance(
     start_date: datetime = Query(...),
     end_date: datetime = Query(...),
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Sync ad-level (creative) performance from Meta."""
@@ -514,7 +514,7 @@ def sync_meta_creative_performance(
 @router.post("/google/auth-url")
 def get_google_auth_url(
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Get Google OAuth authorization URL."""
@@ -534,7 +534,7 @@ def google_oauth_callback(
     state: Optional[str] = None,
     customer_id: Optional[str] = None,
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Handle Google OAuth callback."""
@@ -595,7 +595,7 @@ def sync_google_ad_spend(
     start_date: datetime = Query(...),
     end_date: datetime = Query(...),
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Sync ad spend data from Google Ads."""
@@ -676,7 +676,7 @@ def sync_google_creative_performance(
     start_date: datetime = Query(...),
     end_date: datetime = Query(...),
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Sync ad-level (creative) performance from Google Ads."""
@@ -757,7 +757,7 @@ def sync_google_creative_performance(
 @router.post("/tiendanube/auth-url")
 def get_tiendanube_auth_url(
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Get Tiendanube OAuth authorization URL."""
@@ -776,7 +776,7 @@ def tiendanube_oauth_callback(
     code: str,
     state: Optional[str] = None,
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Handle Tiendanube OAuth callback."""
@@ -971,7 +971,7 @@ async def tiendanube_webhook(
 @router.post("/mercadopago/auth-url")
 def get_mercadopago_auth_url(
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Get MercadoPago OAuth authorization URL."""
@@ -990,7 +990,7 @@ def mercadopago_oauth_callback(
     code: str,
     state: Optional[str] = None,
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Handle MercadoPago OAuth callback."""
@@ -1050,7 +1050,7 @@ def sync_mercadopago_ad_spend(
     start_date: datetime = Query(...),
     end_date: datetime = Query(...),
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Sync ad spend data from MercadoPago."""

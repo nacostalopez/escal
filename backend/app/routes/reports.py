@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_owned_store, require_role
+from app.dependencies import get_owned_store, require_store_role
 from app.models import Store, StoreReportPreference, User
 from app.schemas.reports import ReportPreferencesIn, ReportPreferencesOut, SendReportNowOut
 from app.services.reports import send_weekly_report
@@ -22,7 +22,7 @@ def get_report_preferences(store: Store = Depends(get_owned_store), db: Session 
 def set_report_preferences(
     payload: ReportPreferencesIn,
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     row = db.get(StoreReportPreference, store.id)
@@ -38,7 +38,7 @@ def set_report_preferences(
 @router.post("/send-now", response_model=SendReportNowOut)
 def send_report_now(
     store: Store = Depends(get_owned_store),
-    _: User = Depends(require_role("owner", "admin")),
+    _: User = Depends(require_store_role("owner", "admin")),
     db: Session = Depends(get_db),
 ):
     """Sends (and returns) the weekly summary right now, regardless of the

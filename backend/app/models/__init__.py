@@ -1,6 +1,7 @@
 from app.models.audit import (
     AlertLog,
     ConnectorStatus,
+    CustomerDataAccessLog,
     OAuthState,
     ShopifyWebhookLog,
     TiendanubeWebhookLog,
@@ -19,6 +20,7 @@ from app.models.relational import (
     Store,
     StoreAlertPreference,
     StoreCredential,
+    StoreMembership,
     StoreReportPreference,
     User,
 )
@@ -34,6 +36,7 @@ __all__ = [
     "Store",
     "StoreAlertPreference",
     "StoreCredential",
+    "StoreMembership",
     "StoreReportPreference",
     "Product",
     "User",
@@ -43,6 +46,7 @@ __all__ = [
     "ConnectorStatus",
     "OAuthState",
     "AlertLog",
+    "CustomerDataAccessLog",
     "orders",
     "pixel_events",
     "ad_spend",

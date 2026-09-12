@@ -5,7 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Store, User
+from app.models import Store, StoreMembership, User
 from app.security import decode_access_token
 
 bearer_scheme = HTTPBearer()
@@ -45,6 +45,38 @@ def require_role(*allowed_roles: str):
     """
     def _check(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role not in allowed_roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        return current_user
+    return _check
+
+
+def _effective_role_for_store(db: Session, user: User, store_id: UUID) -> str:
+    """A StoreMembership row overrides the account-wide role for that one
+    store; no row means the account role applies, same as before this
+    feature existed. Always a live query, same reasoning as require_role's
+    own docstring above (a role change — account-wide or per-store — must
+    take effect on the next request, not wait out a cached value)."""
+    override = db.get(StoreMembership, (store_id, user.id))
+    return override.role if override else user.role
+
+
+def require_store_role(*allowed_roles: str):
+    """Like require_role, but checks the role effective *for this store*
+    (store_id is a path param FastAPI injects the same way get_owned_store
+    already does) rather than the account-wide role unconditionally.
+
+    Only for store-scoped routes (prefix /stores/{store_id}/...) — account-
+    level actions (managing account members/invites in app/routes/accounts.py)
+    stay on plain require_role, since a store override has no business
+    affecting cuenta-wide administration.
+    """
+    def _check(
+        store_id: UUID,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        role = _effective_role_for_store(db, current_user, store_id)
+        if role not in allowed_roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
         return current_user
     return _check

@@ -410,6 +410,50 @@ URI to use. Without that, the button/modal/redirect mechanics all work
 correctly (verified via Playwright, including the graceful-failure path),
 but the actual provider consent screen and token exchange can't complete.
 
+### Per-store roles
+
+RBAC was account-wide only (`User.role`: `owner`/`admin`/`viewer`, applies
+uniformly to every store in the account) until now. `store_memberships`
+adds an **additive override**: a row for `(store_id, user_id)` overrides
+the effective role for that one store only — no row means the account
+role still applies, so this is fully backward compatible. It doesn't
+revoke access to a store (that's still governed by account membership via
+`get_owned_store`); it only adjusts *which* role applies there, e.g.
+promoting an account-wide viewer to admin for one store, or restricting an
+account-wide admin to viewer on a sensitive one.
+
+`app/dependencies.py::require_store_role` is the store-aware counterpart
+to `require_role` — every store-scoped mutating route (products, orders,
+ad-spend, connectors, alerts, reports, etc.) was switched to it. Account-
+level actions (`app/routes/accounts.py` — inviting/removing members,
+changing account-wide roles) deliberately stayed on plain `require_role`,
+since a store override has no business affecting cuenta-wide
+administration.
+
+`GET`/`PUT /stores/{id}/members` manage the overrides — both gated to the
+**account-wide owner role specifically** (not `require_store_role`), so a
+user who only holds "admin" via a store override can't grant themselves
+(or anyone) a stronger one on that same store. The dashboard's "Miembros"
+button (add via the store panel) opens this as a per-user role dropdown
+("Igual que la cuenta" clears the override).
+
+### Customer data access log
+
+`Customer` is hash-only by design (see "Customer identity") and no route
+returns it directly — the only customer-linked value any route exposes is
+the opaque `customer_id` UUID via `GET /stores/{id}/orders`. So that's
+what gets logged: every call to it records who (which user) and when into
+`customer_data_access_log`. `GET /stores/{id}/orders/audit-log?limit=50`
+reads it back, most recent first, gated to `require_store_role("owner",
+"admin")` — a viewer can't see who looked at what. Dashboard's
+"Auditoría" button shows the last 50 entries as a simple table.
+
+This is deliberately narrow in scope: it's an access log for the one
+customer-linked value that exists today, not a general-purpose audit
+trail. If a future feature exposes real customer data more directly, that
+call site would need its own logging call the same way `list_orders` has
+one now — there's no shared middleware doing this generically.
+
 ## API overview
 
 - `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
@@ -465,6 +509,10 @@ but the actual provider consent screen and token exchange can't complete.
   OAuth handshake, ad-spend sync, and (Shopify/Tiendanube) order webhook per
   provider; Meta/Google also get `.../sync-creative-performance` — see `DEVELOPMENT.md`
 - `GET /stores/{id}/connectors/health` — per-provider sync status
+- `GET/PUT /stores/{id}/members` — per-store role overrides (see "Per-store
+  roles" above)
+- `GET /stores/{id}/orders/audit-log?limit=` — who fetched order data and
+  when (see "Customer data access log" above)
 
 All requests are logged as structured JSON (see `DEVELOPMENT.md`) and rate
 limited (200/min default, tighter on `/auth/*` and the Shopify webhook) —
@@ -483,10 +531,11 @@ see "Customer identity"), LTV-by-cohort + blended CAC payback (see
 "LTV by cohort + CAC payback"), CAC split by acquisition channel (see
 "CAC by channel"), a simple 30-day linear forecast (see "Forecast (simple
 linear projection)"), proactive CAC/ROAS email alerts (see "Proactive
-alerts"), a weekly email summary report (see "Weekly reports"), the
-Meta/Google CAPI feedback loop (see "CAPI feedback loop"), and a working
-Connect flow for Shopify/Meta/Google (see "Connect flow (Shopify, Meta,
-Google)") are done.
+alerts"), a weekly email summary report (see "Weekly reports"), per-store
+role overrides (see "Per-store roles"), a customer-data access log (see
+"Customer data access log"), the Meta/Google CAPI feedback loop (see
+"CAPI feedback loop"), and a working Connect flow for Shopify/Meta/Google
+(see "Connect flow (Shopify, Meta, Google)") are done.
 
 The frontend (`frontend/`, plain HTML/CSS/JS, no build step) has been carried
 well past "just enough to see real numbers": ARAMAL brand system with light/
@@ -547,6 +596,14 @@ built:
   etc. are all still placeholders. The mechanics (button, modal, redirect,
   state-token validation, graceful failure, URL cleanup) are verified via
   Playwright; the actual OAuth handshake needs real credentials to try.
+- Per-store roles (see "Per-store roles" above) only *override* the
+  effective role for a store — there's no way to fully revoke an account
+  member's access to one specific store while keeping them in the account
+  (that'd need a "none" sentinel role, not built).
+- The customer-data access log only covers `GET /orders` — the one route
+  that exposes anything customer-linked today. It isn't a generic
+  audit-logging middleware; a future route that exposes real customer data
+  would need its own explicit logging call.
 
 Note for `docker compose` users: `FRONTEND_URL` and `SMTP_*` must be set in a
 root-level `.env` (not `backend/.env`) — `docker-compose.yml`'s `backend`
