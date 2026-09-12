@@ -54,6 +54,22 @@ class ConnectorStatus(Base):
     last_error = Column(Text)
 
 
+class AlertLog(Base):
+    """Dedupe record for proactive CAC/ROAS alerts — see
+    app/services/alerts.py. dedupe_key's shape depends on alert_type: for
+    'cac' it's "{channel}:{cohort_month}" (once per channel per month); for
+    'roas' it's the constant "roas" and dedupe is a cooldown on sent_at
+    instead (see check_roas_alert)."""
+
+    __tablename__ = "alert_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id = Column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
+    alert_type = Column(String(20), nullable=False)
+    dedupe_key = Column(String(100), nullable=False)
+    sent_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class OAuthState(Base):
     """CSRF state tokens for the OAuth handshake — issued by */auth-url,
     burned by the matching */callback. See db/init/013_oauth_states.sql."""

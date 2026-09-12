@@ -269,6 +269,37 @@ dashboard's "CAC por canal" widget (add it via "Personalizar") renders
 this as a grid, same cohort semantics as "LTV by cohort" above (`start`/
 `end` filter cohorts by `first_order_at`, not orders).
 
+### Proactive alerts
+
+Opt-in per store (`GET`/`PUT /stores/{id}/alert-preferences`, off by
+default): email the account's owner(s) when a channel's CAC crosses a
+configured threshold, or when true ROAS stays below a configured minimum
+(default 1.0x) for N days in a row (default 3). Two independent checks:
+
+- **CAC** — re-evaluates the current calendar month's "CAC by channel"
+  above once per channel; fires at most once per channel per month (no
+  point re-warning mid-month before the picture is final). Off entirely
+  when no `cac_threshold` is set — there's no dollar default that makes
+  sense across businesses.
+- **ROAS** — looks at the trailing `roas_days_n` days of `/metrics/daily`;
+  a day with `$0` ad spend is skipped rather than counted as good or bad
+  (nothing to divide by). Fires once, then won't re-fire for
+  `roas_days_n` days (a cooldown, not a fixed calendar boundary like CAC's).
+
+There is **no in-process scheduler** — `app/services/alerts.py` is invoked
+by `scripts/run_alert_checks.py`, meant to run from a real cron (or Windows
+Task Scheduler, since that's this project's dev machine):
+
+```
+0 9 * * * cd /path/to/escal && python scripts/run_alert_checks.py
+```
+
+The dashboard's "Alertas" button (next to "Personalizar") opens a small
+config modal with a "Probar ahora" button that runs the same check
+synchronously (`POST /stores/{id}/alert-preferences/check-now`) instead of
+waiting for the next cron tick — useful for tuning thresholds and for
+verifying the feature works at all without real ad-account data yet.
+
 ### CAPI feedback loop
 
 Sends confirmed purchases back to Meta Conversions API and Google Enhanced
@@ -374,6 +405,12 @@ but the actual provider consent screen and token exchange can't complete.
 - `GET /stores/{id}/metrics/ltv-cohorts?start=&end=&months=` — cumulative
   LTV per acquisition cohort, blended CAC, and payback month (see "LTV by
   cohort + CAC payback" above)
+- `GET /stores/{id}/metrics/cac-by-channel?start=&end=` — the same cohorts,
+  CAC split per acquisition channel instead of blended (see "CAC by channel"
+  above)
+- `GET/PUT /stores/{id}/alert-preferences`, `POST
+  /stores/{id}/alert-preferences/check-now` — proactive CAC/ROAS alerts (see
+  "Proactive alerts" below)
 - `GET/POST /connectors/{shopify,meta,google,tiendanube,mercadopago}/...` —
   OAuth handshake, ad-spend sync, and (Shopify/Tiendanube) order webhook per
   provider; Meta/Google also get `.../sync-creative-performance` — see `DEVELOPMENT.md`
@@ -394,9 +431,10 @@ frontend token refresh, hash-only customer identity resolution (every
 order-ingestion path links to a deduplicated, PII-free `customers` row —
 see "Customer identity"), LTV-by-cohort + blended CAC payback (see
 "LTV by cohort + CAC payback"), CAC split by acquisition channel (see
-"CAC by channel"), the Meta/Google CAPI feedback loop (see
-"CAPI feedback loop"), and a working Connect flow for Shopify/Meta/Google
-(see "Connect flow (Shopify, Meta, Google)") are done.
+"CAC by channel"), proactive CAC/ROAS email alerts (see "Proactive
+alerts"), the Meta/Google CAPI feedback loop (see "CAPI feedback loop"),
+and a working Connect flow for Shopify/Meta/Google (see "Connect flow
+(Shopify, Meta, Google)") are done.
 
 The frontend (`frontend/`, plain HTML/CSS/JS, no build step) has been carried
 well past "just enough to see real numbers": ARAMAL brand system with light/

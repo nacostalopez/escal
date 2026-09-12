@@ -14,6 +14,7 @@ from app.rate_limit import limiter
 from app.routes import (
     accounts,
     ad_spend,
+    alerts,
     auth,
     connectors,
     creative_performance,
@@ -76,6 +77,7 @@ app.include_router(metrics.router)
 app.include_router(connectors.router)
 app.include_router(connectors.health_router)
 app.include_router(dashboard.router)
+app.include_router(alerts.router)
 
 
 @app.get("/health")

@@ -1,4 +1,11 @@
-from app.models.audit import ConnectorStatus, OAuthState, ShopifyWebhookLog, TiendanubeWebhookLog, TokenRefreshAudit
+from app.models.audit import (
+    AlertLog,
+    ConnectorStatus,
+    OAuthState,
+    ShopifyWebhookLog,
+    TiendanubeWebhookLog,
+    TokenRefreshAudit,
+)
 from app.models.hypertables import ad_spend, creative_performance, orders, pixel_events
 from app.models.relational import (
     Account,
@@ -10,6 +17,7 @@ from app.models.relational import (
     Product,
     RefreshToken,
     Store,
+    StoreAlertPreference,
     StoreCredential,
     User,
 )
@@ -23,6 +31,7 @@ __all__ = [
     "PasswordResetToken",
     "RefreshToken",
     "Store",
+    "StoreAlertPreference",
     "StoreCredential",
     "Product",
     "User",
@@ -31,6 +40,7 @@ __all__ = [
     "TokenRefreshAudit",
     "ConnectorStatus",
     "OAuthState",
+    "AlertLog",
     "orders",
     "pixel_events",
     "ad_spend",

@@ -1,6 +1,17 @@
 import uuid
 
-from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -71,6 +82,23 @@ class DashboardLayout(Base):
 
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     widgets = Column(JSONB, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class StoreAlertPreference(Base):
+    """Opt-in CAC/ROAS alert config, one row per store. See
+    app/services/alerts.py for how these thresholds are checked and
+    scripts/run_alert_checks.py for how the check actually gets run
+    (there's no in-process scheduler — see that script's docstring)."""
+
+    __tablename__ = "store_alert_preferences"
+
+    store_id = Column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=False)
+    # NULL = no CAC alert configured — no dollar default makes sense across businesses.
+    cac_threshold = Column(Numeric(12, 4))
+    roas_threshold = Column(Numeric(6, 2), nullable=False, default=1.0)
+    roas_days_n = Column(SmallInteger, nullable=False, default=3)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 

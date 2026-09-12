@@ -628,6 +628,8 @@ a:hover { text-decoration: underline; }
   color: var(--text);
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.modal-card label.checkbox-label { flex-direction: row; align-items: center; gap: 8px; }
+.modal-card label.checkbox-label input { width: auto; padding: 0; }
 
 /* Landing de presentación (frontend/landing.html) */
 .l-nav {

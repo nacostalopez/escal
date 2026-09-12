@@ -1213,6 +1213,55 @@ document.getElementById("new-store-form").addEventListener("submit", async (e) =
 });
 
 // ---------------------------------------------------------------------------
+// Alert preferences modal
+// ---------------------------------------------------------------------------
+
+const alertPreferencesModal = document.getElementById("alert-preferences-modal");
+
+async function openAlertPreferencesModal() {
+  document.getElementById("alert-check-result").hidden = true;
+  const prefs = await api(`/stores/${state.activeStoreId}/alert-preferences`);
+  document.getElementById("alert-enabled").checked = prefs.enabled;
+  document.getElementById("alert-cac-threshold").value = prefs.cac_threshold === null ? "" : prefs.cac_threshold;
+  document.getElementById("alert-roas-threshold").value = prefs.roas_threshold;
+  document.getElementById("alert-roas-days").value = prefs.roas_days_n;
+  alertPreferencesModal.hidden = false;
+}
+
+document.getElementById("alerts-btn").addEventListener("click", openAlertPreferencesModal);
+document.getElementById("alert-preferences-cancel").addEventListener("click", () => (alertPreferencesModal.hidden = true));
+
+document.getElementById("alert-preferences-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const cacRaw = document.getElementById("alert-cac-threshold").value;
+  await api(`/stores/${state.activeStoreId}/alert-preferences`, {
+    method: "PUT",
+    body: {
+      enabled: document.getElementById("alert-enabled").checked,
+      cac_threshold: cacRaw === "" ? null : Number(cacRaw),
+      roas_threshold: Number(document.getElementById("alert-roas-threshold").value),
+      roas_days_n: Number(document.getElementById("alert-roas-days").value),
+    },
+  });
+  alertPreferencesModal.hidden = true;
+});
+
+document.getElementById("alert-preferences-check-now").addEventListener("click", async () => {
+  const resultEl = document.getElementById("alert-check-result");
+  resultEl.hidden = false;
+  resultEl.textContent = "Corriendo el chequeo...";
+  try {
+    const result = await api(`/stores/${state.activeStoreId}/alert-preferences/check-now`, { method: "POST" });
+    const parts = [];
+    if (result.cac_alerts_sent.length) parts.push(`CAC: ${result.cac_alerts_sent.join("; ")}`);
+    if (result.roas_alert_sent) parts.push("Se envió un aviso de ROAS bajo.");
+    resultEl.textContent = parts.length ? parts.join(" ") : "Todo bien — no se disparó ninguna alerta.";
+  } catch (err) {
+    resultEl.textContent = "No se pudo correr el chequeo: " + err.message;
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Members & invites
 // ---------------------------------------------------------------------------
 

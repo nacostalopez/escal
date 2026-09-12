@@ -255,6 +255,7 @@
                   <option value="90">Últimos 90 días</option>
                 </select>
                 <button id="seed-btn" class="btn btn-ghost">Cargar datos de demo</button>
+                <button id="alerts-btn" class="btn btn-ghost">Alertas</button>
                 <button id="customize-btn" class="btn btn-ghost">Personalizar</button>
               </div>
             </div>
@@ -326,6 +327,35 @@
         <div class="modal-actions">
           <button type="button" id="new-store-cancel" class="btn btn-ghost">Cancelar</button>
           <button type="submit" class="btn btn-primary">Crear</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Alert preferences modal -->
+  <div id="alert-preferences-modal" class="modal" hidden>
+    <div class="modal-card">
+      <h3>Alertas de CAC y ROAS</h3>
+      <p class="muted">Te avisamos por email cuando el CAC de un canal se pasa del umbral, o cuando el true ROAS está por debajo del mínimo varios días seguidos.</p>
+      <form id="alert-preferences-form">
+        <label class="checkbox-label">
+          <input type="checkbox" id="alert-enabled" />
+          Activar alertas para esta tienda
+        </label>
+        <label>CAC máximo aceptable (dejar vacío para no alertar por CAC)
+          <input type="number" id="alert-cac-threshold" min="0" step="0.01" placeholder="Ej: 30.00" />
+        </label>
+        <label>True ROAS mínimo aceptable
+          <input type="number" id="alert-roas-threshold" min="0" step="0.1" value="1.0" required />
+        </label>
+        <label>Días seguidos por debajo del mínimo antes de avisar
+          <input type="number" id="alert-roas-days" min="1" max="14" step="1" value="3" required />
+        </label>
+        <p id="alert-check-result" class="widget-info" hidden></p>
+        <div class="modal-actions">
+          <button type="button" id="alert-preferences-cancel" class="btn btn-ghost">Cerrar</button>
+          <button type="button" id="alert-preferences-check-now" class="btn btn-ghost">Probar ahora</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
         </div>
       </form>
     </div>
