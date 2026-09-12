@@ -105,8 +105,11 @@ class TestAuthenticatedRequests:
     def test_get_current_user_no_token(self, client):
         """Test /auth/me without token fails."""
         response = client.get("/auth/me")
-        
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+        # FastAPI's HTTPBearer (auto_error=True) raises 401 for a missing
+        # Authorization header, not 403 — 403 is only for a recognized-but-
+        # insufficient credential.
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_get_current_user_invalid_token(self, client):
         """Test /auth/me with invalid token fails."""

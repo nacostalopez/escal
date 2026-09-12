@@ -201,6 +201,38 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
   }
 });
 
+function scorePasswordStrength(password) {
+  if (!password) return null;
+  const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((re) => re.test(password)).length;
+  if (password.length < 8) return { level: 0, label: "Muy débil" };
+  if (password.length >= 12 && classes >= 3) return { level: 3, label: "Fuerte" };
+  if (password.length >= 10 && classes >= 2) return { level: 2, label: "Aceptable" };
+  return { level: 1, label: "Débil" };
+}
+
+function wirePasswordMeter(inputId, meterId) {
+  const input = document.getElementById(inputId);
+  const meter = document.getElementById(meterId);
+  if (!input || !meter) return;
+  const bar = meter.querySelector(".pw-meter-bar span");
+  const label = meter.querySelector(".pw-meter-label");
+  input.addEventListener("input", () => {
+    const result = scorePasswordStrength(input.value);
+    if (!result) {
+      meter.hidden = true;
+      return;
+    }
+    meter.hidden = false;
+    meter.dataset.level = String(result.level);
+    bar.style.width = `${((result.level + 1) / 4) * 100}%`;
+    label.textContent = result.label;
+  });
+}
+
+wirePasswordMeter("register-password", "register-password-meter");
+wirePasswordMeter("reset-password", "reset-password-meter");
+wirePasswordMeter("invite-accept-password", "invite-accept-password-meter");
+
 document.getElementById("register-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   authError.hidden = true;
