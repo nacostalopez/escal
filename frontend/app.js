@@ -1262,6 +1262,45 @@ document.getElementById("alert-preferences-check-now").addEventListener("click",
 });
 
 // ---------------------------------------------------------------------------
+// Report preferences modal
+// ---------------------------------------------------------------------------
+
+const reportPreferencesModal = document.getElementById("report-preferences-modal");
+
+async function openReportPreferencesModal() {
+  const preview = document.getElementById("report-preview");
+  preview.hidden = true;
+  preview.textContent = "";
+  const prefs = await api(`/stores/${state.activeStoreId}/report-preferences`);
+  document.getElementById("report-enabled").checked = prefs.enabled;
+  reportPreferencesModal.hidden = false;
+}
+
+document.getElementById("reports-btn").addEventListener("click", openReportPreferencesModal);
+document.getElementById("report-preferences-cancel").addEventListener("click", () => (reportPreferencesModal.hidden = true));
+
+document.getElementById("report-preferences-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  await api(`/stores/${state.activeStoreId}/report-preferences`, {
+    method: "PUT",
+    body: { enabled: document.getElementById("report-enabled").checked },
+  });
+  reportPreferencesModal.hidden = true;
+});
+
+document.getElementById("report-preferences-send-now").addEventListener("click", async () => {
+  const preview = document.getElementById("report-preview");
+  preview.hidden = false;
+  preview.textContent = "Enviando...";
+  try {
+    const result = await api(`/stores/${state.activeStoreId}/report-preferences/send-now`, { method: "POST" });
+    preview.textContent = result.body;
+  } catch (err) {
+    preview.textContent = "No se pudo enviar el reporte: " + err.message;
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Members & invites
 // ---------------------------------------------------------------------------
 

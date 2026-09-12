@@ -19,6 +19,7 @@ from app.models.relational import (
     Store,
     StoreAlertPreference,
     StoreCredential,
+    StoreReportPreference,
     User,
 )
 
@@ -33,6 +34,7 @@ __all__ = [
     "Store",
     "StoreAlertPreference",
     "StoreCredential",
+    "StoreReportPreference",
     "Product",
     "User",
     "ShopifyWebhookLog",

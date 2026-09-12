@@ -102,6 +102,19 @@ class StoreAlertPreference(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class StoreReportPreference(Base):
+    """Opt-in weekly email summary, one row per store. See
+    app/services/reports.py for what the email contains and
+    scripts/send_weekly_reports.py for how it's actually scheduled (no
+    in-process scheduler — same reasoning as StoreAlertPreference above)."""
+
+    __tablename__ = "store_report_preferences"
+
+    store_id = Column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
 

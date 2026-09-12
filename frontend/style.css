@@ -630,6 +630,17 @@ a:hover { text-decoration: underline; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .modal-card label.checkbox-label { flex-direction: row; align-items: center; gap: 8px; }
 .modal-card label.checkbox-label input { width: auto; padding: 0; }
+.report-preview {
+  white-space: pre-wrap;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--highlight);
+  border-radius: 7px;
+  padding: 10px 12px;
+  color: var(--text);
+  max-height: 220px;
+  overflow-y: auto;
+}
 
 /* Landing de presentación (frontend/landing.html) */
 .l-nav {

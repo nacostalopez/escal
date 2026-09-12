@@ -300,6 +300,30 @@ synchronously (`POST /stores/{id}/alert-preferences/check-now`) instead of
 waiting for the next cron tick — useful for tuning thresholds and for
 verifying the feature works at all without real ad-account data yet.
 
+### Weekly reports
+
+Opt-in per store (`GET`/`PUT /stores/{id}/report-preferences`, off by
+default), same no-in-process-scheduler shape as proactive alerts above but
+on a weekly cadence: `scripts/send_weekly_reports.py` (a separate script/
+cron entry from alerts' — different schedule, different concern) emails
+the account's owner(s) a plain-text summary — revenue, net profit, ad
+spend, real profit after ads, true ROAS for the trailing 7 days, plus a
+CAC-by-channel highlight for the current month, omitted when there's
+nothing to show. `app/services/reports.py::build_weekly_summary` reuses
+`SUMMARY_SQL`/`CAC_BY_CHANNEL_SQL` from `metrics.py` rather than
+recomputing anything.
+
+`POST /stores/{id}/report-preferences/send-now` sends (and returns) that
+same summary immediately, regardless of the saved `enabled` toggle — unlike
+alerts' "Probar ahora", which only fires when alerts are actually turned
+on, "Enviar ahora" here is deliberately a preview/test-send so a merchant
+can see what the email looks like *before* deciding to enable it weekly.
+The dashboard's "Reportes" button (next to "Alertas") opens this modal.
+
+`app/services/notifications.py` holds the "look up a store's owner(s) and
+email them, swallowing individual failures" logic shared by both this and
+`app/services/alerts.py`.
+
 ### CAPI feedback loop
 
 Sends confirmed purchases back to Meta Conversions API and Google Enhanced
@@ -411,6 +435,9 @@ but the actual provider consent screen and token exchange can't complete.
 - `GET/PUT /stores/{id}/alert-preferences`, `POST
   /stores/{id}/alert-preferences/check-now` — proactive CAC/ROAS alerts (see
   "Proactive alerts" below)
+- `GET/PUT /stores/{id}/report-preferences`, `POST
+  /stores/{id}/report-preferences/send-now` — weekly email summary (see
+  "Weekly reports" below)
 - `GET/POST /connectors/{shopify,meta,google,tiendanube,mercadopago}/...` —
   OAuth handshake, ad-spend sync, and (Shopify/Tiendanube) order webhook per
   provider; Meta/Google also get `.../sync-creative-performance` — see `DEVELOPMENT.md`
@@ -432,9 +459,10 @@ order-ingestion path links to a deduplicated, PII-free `customers` row —
 see "Customer identity"), LTV-by-cohort + blended CAC payback (see
 "LTV by cohort + CAC payback"), CAC split by acquisition channel (see
 "CAC by channel"), proactive CAC/ROAS email alerts (see "Proactive
-alerts"), the Meta/Google CAPI feedback loop (see "CAPI feedback loop"),
-and a working Connect flow for Shopify/Meta/Google (see "Connect flow
-(Shopify, Meta, Google)") are done.
+alerts"), a weekly email summary report (see "Weekly reports"), the
+Meta/Google CAPI feedback loop (see "CAPI feedback loop"), and a working
+Connect flow for Shopify/Meta/Google (see "Connect flow (Shopify, Meta,
+Google)") are done.
 
 The frontend (`frontend/`, plain HTML/CSS/JS, no build step) has been carried
 well past "just enough to see real numbers": ARAMAL brand system with light/

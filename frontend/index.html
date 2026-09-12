@@ -256,6 +256,7 @@
                 </select>
                 <button id="seed-btn" class="btn btn-ghost">Cargar datos de demo</button>
                 <button id="alerts-btn" class="btn btn-ghost">Alertas</button>
+                <button id="reports-btn" class="btn btn-ghost">Reportes</button>
                 <button id="customize-btn" class="btn btn-ghost">Personalizar</button>
               </div>
             </div>
@@ -355,6 +356,26 @@
         <div class="modal-actions">
           <button type="button" id="alert-preferences-cancel" class="btn btn-ghost">Cerrar</button>
           <button type="button" id="alert-preferences-check-now" class="btn btn-ghost">Probar ahora</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Report preferences modal -->
+  <div id="report-preferences-modal" class="modal" hidden>
+    <div class="modal-card">
+      <h3>Reporte semanal</h3>
+      <p class="muted">Te mandamos un resumen por email cada semana con revenue, profit, gasto en ads, true ROAS y el CAC por canal del mes.</p>
+      <form id="report-preferences-form">
+        <label class="checkbox-label">
+          <input type="checkbox" id="report-enabled" />
+          Activar reporte semanal para esta tienda
+        </label>
+        <pre id="report-preview" class="report-preview" hidden></pre>
+        <div class="modal-actions">
+          <button type="button" id="report-preferences-cancel" class="btn btn-ghost">Cerrar</button>
+          <button type="button" id="report-preferences-send-now" class="btn btn-ghost">Enviar ahora</button>
           <button type="submit" class="btn btn-primary">Guardar</button>
         </div>
       </form>

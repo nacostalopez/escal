@@ -17,25 +17,12 @@ from uuid import UUID, uuid4
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.email import send_email
-from app.models import AlertLog, Store, StoreAlertPreference, User
+from app.models import AlertLog, Store, StoreAlertPreference
 from app.routes.metrics import CAC_BY_CHANNEL_SQL, DAILY_SQL
 from app.schemas.alerts import AlertCheckResult
+from app.services.notifications import send_to_store
 
 logger = logging.getLogger("escal.alerts")
-
-
-def _alert_recipients(db: Session, store: Store) -> list[str]:
-    owners = db.query(User).filter_by(account_id=store.account_id, role="owner").all()
-    return [u.email for u in owners]
-
-
-def _send_alert_email(db: Session, store: Store, subject: str, body: str) -> None:
-    for to in _alert_recipients(db, store):
-        try:
-            send_email(to, subject, body)
-        except Exception:
-            logger.exception("alert_email_failed", extra={"store_id": str(store.id), "to": to})
 
 
 def _already_sent(
@@ -80,7 +67,7 @@ def check_cac_alerts(db: Session, store: Store, prefs: StoreAlertPreference, now
             continue
 
         message = f"{row['channel']}: CAC ${float(row['cac']):.2f} > ${threshold:.2f}"
-        _send_alert_email(
+        send_to_store(
             db,
             store,
             subject=f"[ARAMAL] CAC alto en {store.name} — canal {row['channel']}",
@@ -122,7 +109,7 @@ def check_roas_alert(db: Session, store: Store, prefs: StoreAlertPreference, now
     if _already_sent(db, store.id, "roas", "roas", cooldown=timedelta(days=days_n), now=now):
         return False
 
-    _send_alert_email(
+    send_to_store(
         db,
         store,
         subject=f"[ARAMAL] True ROAS bajo en {store.name}",
