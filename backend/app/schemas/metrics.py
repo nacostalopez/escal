@@ -47,3 +47,14 @@ class CohortLtvOut(BaseModel):
     # First index where ltv_by_month >= cac; null if never (within the
     # window) or if cac itself is null.
     payback_month: int | None
+
+
+class ChannelCacOut(BaseModel):
+    cohort_month: date
+    # Normalized acquisition channel ("meta", "google", or "other" for
+    # anything that didn't map to a known ad platform alias).
+    channel: str
+    new_customers: int
+    # Null when there's no ad_spend for this channel/month.
+    spend: float | None
+    cac: float | None

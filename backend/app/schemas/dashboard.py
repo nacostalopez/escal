@@ -15,6 +15,7 @@ WidgetType = Literal[
     "connector_status",
     "creative_performance",
     "ltv_cohorts",
+    "cac_by_channel",
 ]
 
 DEFAULT_WIDGETS = [

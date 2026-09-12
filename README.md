@@ -240,10 +240,34 @@ of this under its title).
 Deliberately simplified for this first pass, same spirit as Creative
 Analytics scoping out ad-level attribution:
 
-- CAC is blended, not per-channel — no multi-touch attribution.
+- CAC here is blended, not per-channel — see "CAC by channel" below for the
+  per-channel breakdown, which is a separate endpoint/widget rather than a
+  parameter on this one (splitting *this* grid by channel would multiply
+  its cohort × month-offset shape by channel too, a different enough view
+  to warrant its own).
+- No multi-touch attribution — a customer's channel (used by "CAC by
+  channel") is whichever one gets credit for their first order, not a
+  blend across every touchpoint before it.
 - LTV is `net_profit` (contribution margin), not gross revenue.
 - No product-journey or repeat-purchase-interval data yet, just the
   cohort/CAC-payback pair.
+
+### CAC by channel
+
+`GET /stores/{id}/metrics/cac-by-channel?start=&end=` splits the same
+blended CAC above by acquisition channel: for each cohort month, one row
+per channel (`meta`, `google`, or `other`) with that channel's own new
+customers, `ad_spend`, and CAC. A customer's channel is whichever one their
+*first* order's `attribution_utm_source` normalizes to (aliases like
+`facebook`/`fb`/`instagram` → `meta`, `adwords`/`google ads` → `google`);
+anything else lands in `other`, which correctly has no spend/CAC since
+`ad_spend` only ever has `meta`/`google`/`mercadopago` rows to divide by.
+Needs `db/init/019_order_attribution.sql` and reliable
+`attribution_utm_source` on orders (see "Status / next steps") to be
+meaningful — before that migration, everything falls into `other`. The
+dashboard's "CAC por canal" widget (add it via "Personalizar") renders
+this as a grid, same cohort semantics as "LTV by cohort" above (`start`/
+`end` filter cohorts by `first_order_at`, not orders).
 
 ### CAPI feedback loop
 
@@ -369,7 +393,8 @@ password-reset emails (via SMTP, configurable through env vars), transparent
 frontend token refresh, hash-only customer identity resolution (every
 order-ingestion path links to a deduplicated, PII-free `customers` row —
 see "Customer identity"), LTV-by-cohort + blended CAC payback (see
-"LTV by cohort + CAC payback"), the Meta/Google CAPI feedback loop (see
+"LTV by cohort + CAC payback"), CAC split by acquisition channel (see
+"CAC by channel"), the Meta/Google CAPI feedback loop (see
 "CAPI feedback loop"), and a working Connect flow for Shopify/Meta/Google
 (see "Connect flow (Shopify, Meta, Google)") are done.
 
@@ -377,9 +402,9 @@ The frontend (`frontend/`, plain HTML/CSS/JS, no build step) has been carried
 well past "just enough to see real numbers": ARAMAL brand system with light/
 dark mode, a Spanish (`vos`-register, es-AR-formatted) UI throughout, a
 user-configurable summary board (add/remove/reorder widgets, pick which stat
-is the 2x2 hero, plus opt-in creative-analytics and LTV-by-cohort tables —
-see "Dashboard layout", "Creative analytics", and "LTV by cohort + CAC
-payback" below) with real
+is the 2x2 hero, plus opt-in creative-analytics, LTV-by-cohort, and
+CAC-by-channel tables — see "Dashboard layout", "Creative analytics", "LTV
+by cohort + CAC payback", and "CAC by channel" below) with real
 period-over-period deltas, hover tooltips on the daily revenue-vs-spend
 chart, a full Equipo (team) screen for the invite/role/remove routes above
 (including a "Reenviar" action for a pending invite), an invite-link landing
@@ -388,8 +413,8 @@ flow (`index.html?invite_token=...`), and a forgot/reset-password flow
 the register/reset/accept-invite forms. `orders` now also captures
 `utm_medium`, `utm_content`, a normalized `click_id` (`fb:<fbclid>` /
 `g:<gclid>`), and `landing_url` at ingestion time (`db/init/019_*.sql`,
-both the Shopify and Tiendanube connectors) — groundwork for the two
-attribution gaps below, which still need the join logic itself. Not yet
+both the Shopify and Tiendanube connectors) — this was also the missing
+piece for per-channel CAC (see "CAC by channel"), now shipped. Not yet
 built:
 
 - No revenue/ROAS attribution down to the individual ad — creative
@@ -400,12 +425,10 @@ built:
   deeper attribution pipeline change.
 - No thumbnail images in the creative-performance table (see "Creative
   analytics" below for why).
-- No per-channel CAC or product-journey endpoints/UI yet — "LTV by cohort +
-  CAC payback" above ships blended (not per-channel) CAC and an LTV curve
-  only. The attribution fields captured at ingestion (see above) give this
-  a channel to group by; multi-touch attribution and purchase-sequence
-  analysis remain bigger next steps on top of the same `customers`
-  foundation.
+- No multi-touch attribution or product-journey/repeat-purchase-interval
+  endpoints/UI yet — "CAC by channel" credits a customer's *first* order's
+  channel only; a real purchase-sequence/multi-touch model is a bigger next
+  step on top of the same `customers` foundation.
 - The Google side of the CAPI feedback loop (`GoogleAdsConnector.send_purchase_conversion`)
   is built against Google's documented Enhanced Conversions for Leads
   request shape but has never been exercised against a real Google Ads

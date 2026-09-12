@@ -31,6 +31,7 @@ const WIDGET_LABELS = {
   connector_status: "Estado de conectores",
   creative_performance: "Performance por creativo",
   ltv_cohorts: "LTV por cohorte y CAC payback",
+  cac_by_channel: "CAC por canal",
 };
 const STAT_WIDGET_TYPES = ["stat_roas", "stat_revenue", "stat_net_profit", "stat_ad_spend", "stat_real_profit"];
 const ALL_WIDGET_TYPES = Object.keys(WIDGET_LABELS);
@@ -511,6 +512,7 @@ const PANEL_WIDGET_BODY = {
   connector_status: { id: "connector-status", class: "connector-grid" },
   creative_performance: { id: "creative-performance-table", class: "creative-table-wrap" },
   ltv_cohorts: { id: "ltv-cohorts-table", class: "ltv-cohorts-table-wrap" },
+  cac_by_channel: { id: "cac-by-channel-table", class: "cac-by-channel-table-wrap" },
 };
 
 function renderPanelWidgetShell(w) {
@@ -615,6 +617,7 @@ async function persistAndRerenderLayout() {
   await refreshConnectorHealth();
   await refreshCreativePerformance();
   await refreshLtvCohorts();
+  await refreshCacByChannel();
   try {
     await api("/dashboard/layout", { method: "PUT", body: { widgets: state.dashboardLayout } });
   } catch (err) {
@@ -628,6 +631,7 @@ function applyCachedMetrics() {
   if (state.lastConnectorHealth) renderConnectorGrid(state.lastConnectorHealth);
   if (state.lastCreatives) renderCreativeTable(state.lastCreatives);
   if (state.lastCohorts) renderLtvCohortsTable(state.lastCohorts);
+  if (state.lastCac) renderCacByChannelTable(state.lastCac);
 }
 
 // ---------------------------------------------------------------------------
@@ -638,6 +642,7 @@ document.getElementById("range-select").addEventListener("change", () => {
   refreshMetrics();
   refreshCreativePerformance();
   refreshLtvCohorts();
+  refreshCacByChannel();
 });
 
 function dateRange() {
@@ -1051,6 +1056,65 @@ function renderLtvCohortsTable(rows) {
               </tr>
             `;
           })
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// CAC by channel — same acquisition-cohort semantics as LTV by cohort above
+// (start/end select cohorts by first-order date), split by the channel of
+// each customer's first order instead of blended across all of them.
+// ---------------------------------------------------------------------------
+
+const CHANNEL_LABELS = { meta: "Meta", google: "Google", other: "Otro" };
+
+async function refreshCacByChannel() {
+  if (!document.getElementById("cac-by-channel-table")) return;
+  const { start, end } = dateRange();
+  const qs = `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+  const rows = await api(`/stores/${state.activeStoreId}/metrics/cac-by-channel?${qs}`);
+  state.lastCac = rows;
+  renderCacByChannelTable(rows);
+}
+
+function renderCacByChannelTable(rows) {
+  const container = document.getElementById("cac-by-channel-table");
+  if (!container) return;
+
+  const info = '<p class="widget-info">El canal de cada cliente es el de su primera compra, no el de compras posteriores. "Otro" agrupa fuentes que no se reconocen como una plataforma de ads conectada.</p>';
+
+  if (!rows.length) {
+    container.innerHTML = info + '<div class="chart-empty">Todavía no hay cohortes en este rango.</div>';
+    return;
+  }
+
+  container.innerHTML = `
+    ${info}
+    <table class="cac-by-channel-table">
+      <thead>
+        <tr>
+          <th>Cohorte</th>
+          <th>Canal</th>
+          <th>Clientes nuevos</th>
+          <th>Gasto</th>
+          <th>CAC</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map(
+            (r) => `
+              <tr>
+                <td>${fmtCohortMonth(r.cohort_month)}</td>
+                <td>${CHANNEL_LABELS[r.channel] || r.channel}</td>
+                <td>${r.new_customers.toLocaleString("es-AR")}</td>
+                <td>${r.spend === null ? "—" : fmtMoney(r.spend, state.activeStoreCurrency)}</td>
+                <td>${r.cac === null ? "—" : fmtMoney(r.cac, state.activeStoreCurrency)}</td>
+              </tr>
+            `
+          )
           .join("")}
       </tbody>
     </table>

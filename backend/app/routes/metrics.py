@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_owned_store
 from app.models import Store
-from app.schemas.metrics import CohortLtvOut, CreativeMetricOut, DailyMetricOut, MetricsSummaryOut
+from app.schemas.metrics import ChannelCacOut, CohortLtvOut, CreativeMetricOut, DailyMetricOut, MetricsSummaryOut
 
 router = APIRouter(prefix="/stores/{store_id}/metrics", tags=["metrics"])
 
@@ -165,6 +165,72 @@ LTV_COHORTS_SQL = text(
 )
 
 
+# CAC per acquisition channel, unlike LTV_COHORTS_SQL's blended CAC above.
+# A customer's channel is whichever normalized value their *first* order's
+# attribution_utm_source maps to — same acquisition-month boundary as the
+# blended cohorts query (customers.first_order_at), just split by channel
+# instead of summed across all of them. utm_source is freeform text set by
+# whoever built the ad, so it's normalized against the small set of aliases
+# real campaigns actually use; anything else falls into 'other', which
+# correctly gets no spend/CAC since ad_spend only has 'meta'/'google'/
+# 'mercadopago' rows (see connectors' fetch_ad_spend) — no data to divide by.
+CAC_BY_CHANNEL_SQL = text(
+    """
+    WITH channel_orders AS (
+        SELECT
+            o.customer_id,
+            o.time,
+            CASE lower(coalesce(o.attribution_utm_source, ''))
+                WHEN 'meta' THEN 'meta'
+                WHEN 'facebook' THEN 'meta'
+                WHEN 'fb' THEN 'meta'
+                WHEN 'instagram' THEN 'meta'
+                WHEN 'google' THEN 'google'
+                WHEN 'adwords' THEN 'google'
+                WHEN 'google ads' THEN 'google'
+                ELSE 'other'
+            END AS channel
+        FROM orders o
+        WHERE o.store_id = :store_id
+          AND o.customer_id IS NOT NULL
+    ),
+    first_order_channel AS (
+        -- One row per customer: the channel of their earliest order.
+        SELECT DISTINCT ON (customer_id) customer_id, channel
+        FROM channel_orders
+        ORDER BY customer_id, time ASC
+    ),
+    cohorts AS (
+        SELECT c.id, foc.channel, date_trunc('month', c.first_order_at) AS cohort_month
+        FROM customers c
+        JOIN first_order_channel foc ON foc.customer_id = c.id
+        WHERE c.store_id = :store_id
+          AND c.first_order_at BETWEEN :start AND :end
+    ),
+    cohort_sizes AS (
+        SELECT cohort_month, channel, COUNT(*) AS new_customers
+        FROM cohorts
+        GROUP BY cohort_month, channel
+    ),
+    spend AS (
+        SELECT date_trunc('month', time) AS cohort_month, platform AS channel, SUM(spend) AS spend
+        FROM ad_spend
+        WHERE store_id = :store_id
+        GROUP BY cohort_month, platform
+    )
+    SELECT
+        cs.cohort_month,
+        cs.channel,
+        cs.new_customers,
+        sp.spend,
+        sp.spend / NULLIF(cs.new_customers, 0) AS cac
+    FROM cohort_sizes cs
+    LEFT JOIN spend sp ON sp.cohort_month = cs.cohort_month AND sp.channel = cs.channel
+    ORDER BY cs.cohort_month, cs.channel
+    """
+)
+
+
 @router.get("/summary", response_model=MetricsSummaryOut)
 def metrics_summary(
     start: datetime = Query(...),
@@ -256,3 +322,16 @@ def metrics_ltv_cohorts(
 
     result.sort(key=lambda c: c["cohort_month"])
     return result
+
+
+@router.get("/cac-by-channel", response_model=list[ChannelCacOut])
+def metrics_cac_by_channel(
+    start: datetime = Query(...),
+    end: datetime = Query(...),
+    store: Store = Depends(get_owned_store),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.execute(CAC_BY_CHANNEL_SQL, {"store_id": str(store.id), "start": start, "end": end}).mappings().all()
+    )
+    return rows
