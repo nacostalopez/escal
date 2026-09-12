@@ -421,8 +421,18 @@ built:
   analytics currently shows each platform's own metrics (spend, CTR, CPC,
   CPM), not net_profit or true ROAS per creative. `orders` carries UTM/
   click-id/landing-url data now, but nothing yet joins it to
-  `creative_performance.ad_id` — that join is the remaining piece of a
-  deeper attribution pipeline change.
+  `creative_performance.ad_id`. Investigated and deliberately not built
+  yet: reading `ad_id` back from the CAPI upload response (the original
+  idea) doesn't hold up — neither Meta's Conversions API nor Google's
+  `uploadClickConversions` return per-conversion ad attribution in their
+  response; both compute it internally and only expose it through their
+  own reporting (Ads Manager / GAQL). The real path is the one tools like
+  Triple Whale use: Meta/Google both support dynamic URL parameters on an
+  ad's destination URL (`{{ad.id}}`, ValueTrack), which would already land
+  in `landing_url` if a merchant's campaigns are configured to send them —
+  parsing `ad_id`/`adset_id` out of it needs no new API calls, but the
+  merchant's own ad setup is outside this codebase's control, so it can't
+  be verified in this dev environment (no real ad accounts connected yet).
 - No thumbnail images in the creative-performance table (see "Creative
   analytics" below for why).
 - No multi-touch attribution or product-journey/repeat-purchase-interval
