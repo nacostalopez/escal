@@ -3,6 +3,7 @@ confirmed purchases to Meta Conversions API / Google Enhanced Conversions
 using the hashed email/phone already on `customers`.
 """
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -187,6 +188,10 @@ class TestSendGooglePurchaseConversion:
         assert {"hashedEmail": "e" * 64} in conversion["userIdentifiers"]
         assert {"hashedPhoneNumber": "p" * 64} in conversion["userIdentifiers"]
         assert conversion["orderId"] == "order-1"
+        # No consent-management source is wired up yet (see
+        # GoogleAdsConnector.send_purchase_conversion's docstring) — the CAPI
+        # orchestration layer must never fabricate a consent value.
+        assert "consent" not in conversion
 
         capi_event = test_db_session.query(CapiEvent).filter_by(store_id=test_store.id, order_id="order-1").one()
         assert capi_event.status == "sent"
@@ -210,6 +215,91 @@ class TestSendGooglePurchaseConversion:
         capi_event = test_db_session.query(CapiEvent).filter_by(store_id=test_store.id, order_id="order-1").one()
         assert capi_event.status == "failed"
         assert "bad hash" in capi_event.error
+
+
+class TestGoogleConsentMode:
+    """GoogleAdsConnector.send_purchase_conversion's consent block, tested
+    directly (no DB/orchestration layer) — see its docstring for why the
+    block is opt-in rather than defaulted."""
+
+    def _connector(self):
+        from app.connectors.google import GoogleAdsConnector
+
+        return GoogleAdsConnector(store_id="store-1", customer_id="1234567890")
+
+    def test_no_consent_block_when_not_provided(self, monkeypatch):
+        calls = []
+
+        def fake_post(url, headers=None, json=None, **kwargs):
+            calls.append(json)
+            return _FakeResponse(200, json_body={})
+
+        monkeypatch.setattr(requests, "post", fake_post)
+
+        self._connector().send_purchase_conversion(
+            "fake-token",
+            "customers/1234567890/conversionActions/999",
+            "order-1",
+            datetime(2026, 1, 5, tzinfo=timezone.utc),
+            100.0,
+            "USD",
+            "e" * 64,
+            None,
+        )
+
+        assert "consent" not in calls[0]["conversions"][0]
+
+    def test_consent_block_included_when_both_values_provided(self, monkeypatch):
+        calls = []
+
+        def fake_post(url, headers=None, json=None, **kwargs):
+            calls.append(json)
+            return _FakeResponse(200, json_body={})
+
+        monkeypatch.setattr(requests, "post", fake_post)
+
+        self._connector().send_purchase_conversion(
+            "fake-token",
+            "customers/1234567890/conversionActions/999",
+            "order-1",
+            datetime(2026, 1, 5, tzinfo=timezone.utc),
+            100.0,
+            "USD",
+            "e" * 64,
+            None,
+            ad_user_data_consent="GRANTED",
+            ad_personalization_consent="DENIED",
+        )
+
+        assert calls[0]["conversions"][0]["consent"] == {
+            "adUserData": "GRANTED",
+            "adPersonalization": "DENIED",
+        }
+
+    def test_no_consent_block_when_only_one_value_provided(self, monkeypatch):
+        """Partial consent data is treated the same as none — half a
+        consent decision isn't a decision."""
+        calls = []
+
+        def fake_post(url, headers=None, json=None, **kwargs):
+            calls.append(json)
+            return _FakeResponse(200, json_body={})
+
+        monkeypatch.setattr(requests, "post", fake_post)
+
+        self._connector().send_purchase_conversion(
+            "fake-token",
+            "customers/1234567890/conversionActions/999",
+            "order-1",
+            datetime(2026, 1, 5, tzinfo=timezone.utc),
+            100.0,
+            "USD",
+            "e" * 64,
+            None,
+            ad_user_data_consent="GRANTED",
+        )
+
+        assert "consent" not in calls[0]["conversions"][0]
 
 
 @pytest.mark.db

@@ -411,8 +411,12 @@ built:
   request shape but has never been exercised against a real Google Ads
   account (no test credentials available) — the Meta side has been verified
   end-to-end against the real Graph API (with an intentionally invalid
-  pixel id, confirming the failure path). Also no EEA consent-mode fields
-  (`consent.adUserData`) sent yet on the Google payload.
+  pixel id, confirming the failure path). `send_purchase_conversion` can
+  now attach an EEA consent-mode block (`consent.adUserData`/
+  `adPersonalization`), but only when a caller passes both values
+  explicitly — there is no consent-management source (banner/CMP) in the
+  product yet, so `app/services/capi.py` doesn't pass any today and the
+  block is simply omitted rather than sending a fabricated default.
 - The Shopify/Meta/Google "Conectar" flow (see "Connect flow" above) has
   never completed a real provider consent screen — this dev environment
   has no registered app with any of the three yet, so `SHOPIFY_API_KEY`

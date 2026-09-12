@@ -278,6 +278,8 @@ class GoogleAdsConnector(BaseConnector):
         currency: str,
         email_hash: Optional[str],
         phone_hash: Optional[str],
+        ad_user_data_consent: Optional[str] = None,
+        ad_personalization_consent: Optional[str] = None,
     ) -> None:
         """Upload an Enhanced Conversion for Leads — hashed user_identifiers,
         no gclid required, matching how Escal captures orders today (no
@@ -287,6 +289,14 @@ class GoogleAdsConnector(BaseConnector):
         conversion_action is the full resource name
         ("customers/{id}/conversionActions/{id}"), stored as
         StoreCredential.capi_destination_id for provider="google".
+
+        ad_user_data_consent/ad_personalization_consent are Google's EEA
+        consent-mode values ("GRANTED" or "DENIED"). There is no consent
+        management source wired up yet (see README), so callers that don't
+        have a real signal must leave these None — the consent block is only
+        sent when both are explicitly provided, never fabricated as a
+        default, since an unsent block lets Google fall back to the
+        account-level consent settings instead of a false claim from us.
         """
         if not self.customer_id:
             raise ValueError("customer_id required to upload conversions")
@@ -304,17 +314,22 @@ class GoogleAdsConnector(BaseConnector):
         if phone_hash:
             user_identifiers.append({"hashedPhoneNumber": phone_hash})
 
+        conversion = {
+            "conversionAction": conversion_action,
+            "conversionDateTime": _format_conversion_datetime(order_time),
+            "conversionValue": value,
+            "currencyCode": currency,
+            "orderId": order_id,
+            "userIdentifiers": user_identifiers,
+        }
+        if ad_user_data_consent and ad_personalization_consent:
+            conversion["consent"] = {
+                "adUserData": ad_user_data_consent,
+                "adPersonalization": ad_personalization_consent,
+            }
+
         payload = {
-            "conversions": [
-                {
-                    "conversionAction": conversion_action,
-                    "conversionDateTime": _format_conversion_datetime(order_time),
-                    "conversionValue": value,
-                    "currencyCode": currency,
-                    "orderId": order_id,
-                    "userIdentifiers": user_identifiers,
-                }
-            ],
+            "conversions": [conversion],
             "partialFailure": True,
         }
 
